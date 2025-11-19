@@ -1,0 +1,104 @@
+═══════════════════════════════════════════════════════════════
+  SRC KURS YÖNETİM SİSTEMİ - NASIL ÇALIŞTIRILIR?
+═══════════════════════════════════════════════════════════════
+
+📁 PROJE DİZİNİ
+───────────────────────────────────────────────────────────────
+Projenin kök dizini şu olmalı:
+  C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1
+
+Bu dizinde şu dosyalar olmalı:
+  ✓ BASLA.bat
+  ✓ DURDUR.bat
+  ✓ src\ klasörü
+  ✓ frontend\ klasörü
+  ✓ ops\docker\ klasörü
+
+
+🚀 HIZLI BAŞLATMA (ÖNERİLEN)
+───────────────────────────────────────────────────────────────
+1. Proje kök dizinine gidin:
+   cd "C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1"
+
+2. BASLA.bat dosyasına çift tıklayın VEYA
+   Explorer'da sağ tıklayıp "Çalıştır" seçin
+
+3. 1-2 dakika bekleyin (otomatik olarak):
+   - Docker container'ları başlatılır
+   - Veritabanı hazırlanır
+   - Backend başlatılır
+   - Frontend başlatılır
+
+4. Tarayıcıda açın: http://localhost:3000
+
+
+🛑 DURDURMA
+───────────────────────────────────────────────────────────────
+1. DURDUR.bat dosyasına çift tıklayın VEYA
+2. Backend ve Frontend pencerelerini manuel kapatın
+3. Docker container'ları durdurmak için:
+   docker compose -f ops\docker\docker-compose.yml down
+
+
+📋 MANUEL ÇALIŞTIRMA
+───────────────────────────────────────────────────────────────
+Eğer BASLA.bat çalışmazsa, manuel olarak:
+
+1. TERMINAL 1 - Docker:
+   cd ops\docker
+   docker compose up -d
+
+2. TERMINAL 2 - Backend:
+   cd src\SRC.Presentation.Api
+   dotnet run --urls http://localhost:5000
+
+3. TERMINAL 3 - Frontend:
+   cd frontend
+   npm install  (ilk kez ise)
+   npm run dev
+
+
+✅ KONTROL
+───────────────────────────────────────────────────────────────
+Başarılı oldu mu kontrol edin:
+
+✓ Backend: http://localhost:5000/swagger açılıyor mu?
+✓ Frontend: http://localhost:3000 açılıyor mu?
+✓ Docker: docker ps komutu ile container'lar görünüyor mu?
+
+
+🔐 GİRİŞ BİLGİLERİ
+───────────────────────────────────────────────────────────────
+Kullanıcı: admin
+Şifre:     admin123
+
+
+❌ SORUN GİDERME
+───────────────────────────────────────────────────────────────
+1. "Docker bulunamadı" hatası:
+   → Docker Desktop'ın çalıştığından emin olun
+
+2. "Backend başlamıyor" hatası:
+   → Terminal'de hata mesajlarını kontrol edin
+   → SQL Server container'ının çalıştığını kontrol edin
+
+3. "Frontend başlamıyor" hatası:
+   → frontend klasöründe npm install çalıştırın
+
+4. "Port zaten kullanılıyor" hatası:
+   → DURDUR.bat çalıştırın
+   → Sonra tekrar BASLA.bat çalıştırın
+
+
+📞 DESTEK
+───────────────────────────────────────────────────────────────
+Sorun yaşarsanız:
+1. SORUN_GIDERME.md dosyasını okuyun
+2. Console loglarını kontrol edin
+3. Docker loglarını kontrol edin: docker compose logs
+
+
+═══════════════════════════════════════════════════════════════
+  BAŞARILAR! 🚀
+═══════════════════════════════════════════════════════════════
+

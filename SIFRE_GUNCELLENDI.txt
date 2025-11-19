@@ -1,0 +1,66 @@
+================================================
+  SQL SERVER SIFRE GUNCELLENDI!
+================================================
+
+YENI SIFRE BILGILERI:
+---------------------
+Kullanici Adi: sa
+Sifre: Salih-123
+
+GUNCELLENEN DOSYALAR:
+---------------------
+1. ops/docker/docker-compose.yml
+2. src/SRC.Presentation.Api/appsettings.json
+3. COZUM.bat
+4. YENIDEN_BASLAT.bat
+5. SQL_SERVER_KONTROL.bat
+6. SIFRE_SIFIRLA_TAM.bat
+7. MIGRASYON_MANUAL.bat
+
+VERITABANI:
+-----------
+- Microsoft SQL Server 2022 (Docker Container)
+- Port: 1433
+- Database: srcdb
+- Kullanici: sa
+- Sifre: Salih-123
+
+TUM VERILER SQL SERVER'DA TUTULUYOR:
+------------------------------------
+- Kullanicilar (Users)
+- Ogrenciler (Students)
+- Ogrenci Belgeleri (StudentDocuments)
+- MEB Gruplari (MebGroups)
+- Kurslar (Courses)
+- Kayitlar (Enrollments)
+- Program Slots (ScheduleSlots)
+- Yoklama (Attendances)
+- Sinavlar (Exams)
+- Sinav Sonuclari (ExamResults)
+- Odemeler (Payments)
+- MEBBIS Transfer Isleri (MebbisTransferJobs)
+- MEBBIS Transfer Ogelari (MebbisTransferItems)
+
+SIMDI NE YAPMALISINIZ:
+----------------------
+1. SIFRE_SIFIRLA_TAM.bat dosyasini calistirin
+   - Eski container ve volume'leri siler
+   - Yeni sifre ile yeniden baslatir
+
+2. VEYA direkt BASLA.bat dosyasini calistirin
+   - Container'lar zaten yeni sifre ile baslatildi
+   - Backend otomatik migration uygulayacak
+
+GIRIS BILGILERI:
+---------------
+- SQL Server: sa / Salih-123
+- Uygulama Login: admin / admin123
+
+ERISIM ADRESLERI:
+----------------
+- Frontend: http://localhost:3000
+- Backend: http://localhost:5000
+- Swagger: http://localhost:5000/swagger
+
+================================================
+

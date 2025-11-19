@@ -1,0 +1,58 @@
+================================================
+  SQL SERVER SORUNU COZULDU!
+================================================
+
+YAPILAN DEGISIKLIKLER:
+-----------------------
+1. SQL Server sifresi degistirildi:
+   - Eski: SRC2024!Pass (ozel karakter sorunu)
+   - Yeni: SRC2024Pass123 (ozel karakter yok)
+
+2. Guncellenen dosyalar:
+   - ops/docker/docker-compose.yml
+   - src/SRC.Presentation.Api/appsettings.json
+   - COZUM.bat
+   - YENIDEN_BASLAT.bat
+   - SQL_SERVER_KONTROL.bat
+   - SIFRE_SIFIRLA_TAM.bat
+
+3. SQL Server container yeni sifre ile baslatildi
+4. Veritabani (srcdb) olusturuldu
+
+SIMDI NE YAPMALISINIZ:
+----------------------
+1. BASLA.bat dosyasini calistirin
+   - Backend otomatik olarak migration'lari uygulayacak
+   - SQL Server hazir olana kadar bekleyecek (max 60 saniye)
+   - Retry mekanizmasi var (12 deneme)
+
+2. Backend basladiktan sonra:
+   - Frontend: http://localhost:3000
+   - Backend: http://localhost:5000
+   - Swagger: http://localhost:5000/swagger
+   - Login: admin / admin123
+
+EĞER SORUN DEVAM EDERSE:
+------------------------
+1. SIFRE_SIFIRLA_TAM.bat dosyasini calistirin
+   - Bu tum container'lari ve volume'leri siler
+   - Yeni sifre ile yeniden baslatir
+
+2. SQL_SERVER_KONTROL.bat ile SQL Server durumunu kontrol edin
+
+3. Backend penceresindeki loglari kontrol edin
+   - Migration loglarini goreceksiniz
+   - Hata varsa detayli mesaj gosterilecek
+
+ONEMLI NOTLAR:
+-------------
+- Backend baslatildiginda migration'lar OTOMATIK uygulanacak
+- SQL Server hazir olana kadar backend bekleyecek
+- Eger migration hatasi gorurseniz, backend penceresini kapatmayin
+- Backend otomatik tekrar deneyecek (max 12 deneme, 60 saniye)
+
+YENI SIFRE: SRC2024Pass123
+LOGIN: admin / admin123
+
+================================================
+

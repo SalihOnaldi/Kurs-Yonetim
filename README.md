@@ -126,4 +126,3 @@ Swagger UI: http://localhost:5000/swagger
 ## 📄 Lisans
 
 Bu proje özel bir projedir.
-

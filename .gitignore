@@ -1,0 +1,58 @@
+# .NET Build Artifacts
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.dll
+*.pdb
+*.exe
+[Dd]ebug/
+[Rr]elease/
+*.log
+*.vsidx
+.vs/
+*.csproj.user
+
+# Node.js / Next.js
+node_modules/
+npm-debug.log
+yarn-error.log
+.next/
+out/
+dist/
+*.tsbuildinfo
+.vercel
+
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+appsettings.Development.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+.DS_Store
+
+# Database
+*.db
+*.sqlite
+*.mdf
+*.ldf
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+Thumbs.db
+

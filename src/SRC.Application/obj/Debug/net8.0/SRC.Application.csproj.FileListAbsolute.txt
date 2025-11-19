@@ -1,0 +1,15 @@
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\bin\Debug\net8.0\SRC.Application.deps.json
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\bin\Debug\net8.0\SRC.Application.dll
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\bin\Debug\net8.0\SRC.Application.pdb
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\bin\Debug\net8.0\SRC.Domain.dll
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\bin\Debug\net8.0\SRC.Domain.pdb
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\obj\Debug\net8.0\SRC.Application.csproj.AssemblyReference.cache
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\obj\Debug\net8.0\SRC.Application.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\obj\Debug\net8.0\SRC.Application.AssemblyInfoInputs.cache
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\obj\Debug\net8.0\SRC.Application.AssemblyInfo.cs
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\obj\Debug\net8.0\SRC.Application.csproj.CoreCompileInputs.cache
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\obj\Debug\net8.0\SRC.Appl.59159EE3.Up2Date
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\obj\Debug\net8.0\SRC.Application.dll
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\obj\Debug\net8.0\refint\SRC.Application.dll
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\obj\Debug\net8.0\SRC.Application.pdb
+C:\Users\0000K04-ULPC-01\Desktop\SRC Projesi\ProjeDosyasi\V1\src\SRC.Application\obj\Debug\net8.0\ref\SRC.Application.dll

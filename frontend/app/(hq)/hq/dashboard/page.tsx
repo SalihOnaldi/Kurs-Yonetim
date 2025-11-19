@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 
 interface HqTenantUsageDto {
@@ -164,6 +165,7 @@ const getApiErrorMessage = (error: unknown, fallback: string) => {
 };
 
 export default function HqDashboardPage() {
+  const router = useRouter();
   const [data, setData] = useState<HqTenantUsageDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -501,6 +503,7 @@ export default function HqDashboardPage() {
 
   const getDaysRemaining = (expireDate?: string) => {
     if (!expireDate) return null;
+    if (!mounted) return null; // Server-side rendering için null döndür
     const exp = new Date(expireDate);
     const now = new Date();
     const diff = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -508,6 +511,14 @@ export default function HqDashboardPage() {
   };
 
   const enhancedTenants: EnhancedTenant[] = useMemo(() => {
+    if (!mounted) {
+      // Server-side rendering için basit bir dönüşüm yap
+      return data.map((tenant) => ({
+        ...tenant,
+        daysRemaining: null,
+        status: "unknown" as LicenseStatus,
+      }));
+    }
     return data.map((tenant) => {
       const daysRemaining = getDaysRemaining(tenant.expireDate);
       let status: LicenseStatus = "unknown";
@@ -520,7 +531,7 @@ export default function HqDashboardPage() {
 
       return { ...tenant, daysRemaining, status };
     });
-  }, [data]);
+  }, [data, mounted]);
 
   const availableCities = useMemo(() => {
     const cities = new Set<string>();
@@ -774,6 +785,14 @@ export default function HqDashboardPage() {
     window.URL.revokeObjectURL(url);
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("tenantId");
+    localStorage.removeItem("tenants");
+    router.push("/login");
+  };
+
   return (
     <div className="min-h-screen overflow-y-auto bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 pb-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -785,6 +804,12 @@ export default function HqDashboardPage() {
             <p className="text-sm text-slate-600 mt-1">SRC kurslarına verilen lisansları görüntüleyin ve yönetin.</p>
           </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            onClick={handleLogout}
+            className="rounded-lg bg-gradient-to-r from-red-500 to-rose-600 px-4 py-2 text-sm font-medium text-white hover:from-red-600 hover:to-rose-700 shadow-md transition-all"
+          >
+            Çıkış Yap
+          </button>
           <button
             onClick={loadData}
             className="rounded-lg bg-gradient-to-r from-slate-500 to-slate-600 px-4 py-2 text-sm font-medium text-white hover:from-slate-600 hover:to-slate-700 shadow-md transition-all"
@@ -1079,20 +1104,21 @@ export default function HqDashboardPage() {
               </div>
               <div className="mt-4 space-y-2">
                 {csvSummary &&
-                  Object.entries(csvSummary.last7Days).map(([date, point]) => (
+                  Object.entries(csvSummary.last7Days).map(([date, point]) => {
+                    const formattedDate = mounted
+                      ? (() => {
+                          try {
+                            return new Date(date).toLocaleDateString("tr-TR", { weekday: "short", month: "short", day: "numeric" });
+                          } catch {
+                            return date.split("-").reverse().join(".");
+                          }
+                        })()
+                      : date.split("-").reverse().join(".");
+                    
+                    return (
                     <div key={date} className="text-xs text-slate-600">
                       <div className="flex items-center justify-between">
-                        <span>
-                          {mounted
-                            ? (() => {
-                                try {
-                                  return new Date(date).toLocaleDateString("tr-TR", { weekday: "short", month: "short", day: "numeric" });
-                                } catch {
-                                  return date;
-                                }
-                              })()
-                            : date.split("-").reverse().join(".")}
-                        </span>
+                        <span>{formattedDate}</span>
                         <span className="text-emerald-600">+{point.imports}</span>
                         <span className="text-blue-600">+{point.exports}</span>
                       </div>
@@ -1111,7 +1137,8 @@ export default function HqDashboardPage() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
               </div>
             </div>
             <div className="rounded-xl border-2 border-emerald-200 bg-white/80 backdrop-blur-sm p-4">
@@ -1383,92 +1410,6 @@ export default function HqDashboardPage() {
         </div>
       )}
 
-      {permissions.canManage && (
-        <div className="rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 p-6 shadow-lg">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-semibold text-orange-800">
-              Seçili lisanslar: <strong className="text-2xl text-orange-600">{selectedTenants.length}</strong>
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => handleBulkAction("disable")}
-                disabled={selectedTenants.length === 0}
-                className="rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 px-4 py-2 text-sm font-medium text-white hover:from-yellow-600 hover:to-orange-600 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Pasifleştir
-              </button>
-              <button
-                onClick={() => handleBulkAction("enable")}
-                disabled={selectedTenants.length === 0}
-                className="rounded-lg bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-2 text-sm font-medium text-white hover:from-emerald-600 hover:to-green-600 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Aktifleştir
-              </button>
-              <button
-                onClick={() => handleBulkAction("delete")}
-                disabled={selectedTenants.length === 0}
-                className="rounded-lg bg-gradient-to-r from-red-500 to-rose-500 px-4 py-2 text-sm font-medium text-white hover:from-red-600 hover:to-rose-600 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Sil
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {summary && (
-        <div className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-xl bg-gradient-to-br from-emerald-500 to-green-600 p-6 shadow-lg hover:shadow-xl transition-shadow cursor-pointer transform hover:scale-105" onClick={() => {}}>
-            <p className="text-emerald-100 text-xs font-semibold uppercase tracking-wide mb-2">Toplam Lisans</p>
-            <p className="text-white text-4xl font-bold">{summary.totalLicenses}</p>
-          </div>
-          <div className="rounded-xl bg-gradient-to-br from-yellow-400 to-amber-500 p-6 shadow-lg hover:shadow-xl transition-shadow cursor-pointer transform hover:scale-105" onClick={() => setStatusFilter("expiring")}>
-            <p className="text-yellow-100 text-xs font-semibold uppercase tracking-wide mb-2">Yakında Dolacak</p>
-            <p className="text-white text-4xl font-bold">{summary.expiringSoon}</p>
-          </div>
-          <div className="rounded-xl bg-gradient-to-br from-red-500 to-rose-600 p-6 shadow-lg hover:shadow-xl transition-shadow cursor-pointer transform hover:scale-105" onClick={() => setStatusFilter("expired")}>
-            <p className="text-red-100 text-xs font-semibold uppercase tracking-wide mb-2">Süresi Dolmuş</p>
-            <p className="text-white text-4xl font-bold">{summary.expired}</p>
-          </div>
-          <div className="rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 p-6 shadow-lg hover:shadow-xl transition-shadow cursor-pointer transform hover:scale-105" onClick={() => {}}>
-            <p className="text-blue-100 text-xs font-semibold uppercase tracking-wide mb-2">Bu Ay Açılan</p>
-            <p className="text-white text-4xl font-bold">{summary.createdThisMonth}</p>
-          </div>
-        </div>
-      )}
-
-      {permissions.canManage && (
-        <div className="rounded-xl border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50 p-6 shadow-lg">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-semibold text-orange-800">
-              Seçili lisanslar: <strong className="text-2xl text-orange-600">{selectedTenants.length}</strong>
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => handleBulkAction("disable")}
-                disabled={selectedTenants.length === 0}
-                className="rounded-lg bg-gradient-to-r from-yellow-500 to-orange-500 px-4 py-2 text-sm font-medium text-white hover:from-yellow-600 hover:to-orange-600 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Pasifleştir
-              </button>
-              <button
-                onClick={() => handleBulkAction("enable")}
-                disabled={selectedTenants.length === 0}
-                className="rounded-lg bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-2 text-sm font-medium text-white hover:from-emerald-600 hover:to-green-600 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Aktifleştir
-              </button>
-              <button
-                onClick={() => handleBulkAction("delete")}
-                disabled={selectedTenants.length === 0}
-                className="rounded-lg bg-gradient-to-r from-red-500 to-rose-500 px-4 py-2 text-sm font-medium text-white hover:from-red-600 hover:to-rose-600 shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Sil
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Lisans Listesi - En Üste Taşındı */}
       <div className="grid gap-4 rounded-xl border-2 border-indigo-200 bg-gradient-to-br from-white to-indigo-50/30 p-6 shadow-lg md:grid-cols-3">

@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using SRC.Application.DTOs.Student;
 using SRC.Application.Interfaces;
+using SRC.Infrastructure.Data;
 using System.Linq;
 
 namespace SRC.Presentation.Api.Controllers;
@@ -12,10 +14,12 @@ namespace SRC.Presentation.Api.Controllers;
 public class StudentsController : ControllerBase
 {
     private readonly IStudentService _studentService;
+    private readonly SrcDbContext _context;
 
-    public StudentsController(IStudentService studentService)
+    public StudentsController(IStudentService studentService, SrcDbContext context)
     {
         _studentService = studentService;
+        _context = context;
     }
 
     [HttpGet]
@@ -169,6 +173,85 @@ public class StudentsController : ControllerBase
         }
 
         return NoContent();
+    }
+
+    [HttpGet("ready-for-next-course")]
+    public async Task<ActionResult> GetStudentsReadyForNextCourse()
+    {
+        // Sertifika almış ve bir sonraki kurs için hazır olan öğrencileri bul
+        var students = await _context.Students
+            .Include(s => s.Certificates)
+                .ThenInclude(c => c.MebGroup)
+            .Include(s => s.Reminders)
+            .Where(s => s.Certificates.Any(c => c.Status == "active") &&
+                       s.Reminders.Any(r => r.Type == "next_course_preparation" && r.Status == "pending"))
+            .Select(s => new
+            {
+                s.Id,
+                s.TcKimlikNo,
+                s.FirstName,
+                s.LastName,
+                s.Phone,
+                s.Email,
+                CompletedCourses = s.Certificates
+                    .Where(c => c.Status == "active")
+                    .Select(c => new
+                    {
+                        c.MebGroup.SrcType,
+                        c.IssueDate
+                    })
+                    .OrderByDescending(c => c.IssueDate)
+                    .ToList(),
+                NextCourseReminders = s.Reminders
+                    .Where(r => r.Type == "next_course_preparation" && r.Status == "pending")
+                    .Select(r => new
+                    {
+                        r.Id,
+                        r.Title,
+                        r.Message,
+                        r.ScheduledAt
+                    })
+                    .ToList(),
+                SelectedSrcCourses = s.SelectedSrcCourses
+            })
+            .ToListAsync();
+
+        var result = students.Select(s =>
+        {
+            var maxCompletedSrc = s.CompletedCourses.Any() 
+                ? s.CompletedCourses.Max(c => c.SrcType) 
+                : 0;
+            
+            var selectedSrcTypes = !string.IsNullOrWhiteSpace(s.SelectedSrcCourses)
+                ? s.SelectedSrcCourses.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(x => int.TryParse(x.Trim(), out var num) ? num : (int?)null)
+                    .Where(n => n.HasValue)
+                    .Select(n => n!.Value)
+                    .ToList()
+                : new List<int>();
+
+            var nextSrcType = maxCompletedSrc + 1;
+            var isReadyForNext = selectedSrcTypes.Contains(nextSrcType);
+
+            return new
+            {
+                s.Id,
+                s.TcKimlikNo,
+                s.FirstName,
+                s.LastName,
+                s.Phone,
+                s.Email,
+                MaxCompletedSrcType = maxCompletedSrc,
+                NextExpectedSrcType = nextSrcType,
+                IsReadyForNext = isReadyForNext,
+                SelectedSrcCourses = selectedSrcTypes,
+                NextCourseReminders = s.NextCourseReminders
+            };
+        })
+        .Where(s => s.IsReadyForNext)
+        .ToList();
+
+        return Ok(result);
     }
 }
 

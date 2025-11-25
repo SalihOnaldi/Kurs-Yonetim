@@ -116,7 +116,7 @@ public class OpenAiService : IAiService
                 group.Branch,
                 group.StartDate,
                 group.EndDate,
-                ActiveCourseCount = group.Courses.Count(course => course.MebApprovalStatus != "rejected")
+                ActiveCourseCount = group.MebApprovalStatus != "rejected" ? 1 : 0
             })
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -132,13 +132,13 @@ public class OpenAiService : IAiService
                 job.Mode,
                 job.Status,
                 job.CreatedAt,
-                Course = new
+                Group = new
                 {
-                    job.Course.SrcType,
-                    job.Course.MebGroup.Year,
-                    job.Course.MebGroup.Month,
-                    job.Course.MebGroup.GroupNo,
-                    job.Course.MebGroup.Branch
+                    job.MebGroup.SrcType,
+                    job.MebGroup.Year,
+                    job.MebGroup.Month,
+                    job.MebGroup.GroupNo,
+                    job.MebGroup.Branch
                 }
             })
             .ToListAsync(cancellationToken)
@@ -170,11 +170,11 @@ public class OpenAiService : IAiService
                 slot.Id,
                 slot.Subject,
                 slot.StartTime,
-                slot.Course.SrcType,
-                slot.Course.MebGroup.Year,
-                slot.Course.MebGroup.Month,
-                slot.Course.MebGroup.GroupNo,
-                slot.Course.MebGroup.Branch,
+                slot.MebGroup.SrcType,
+                slot.MebGroup.Year,
+                slot.MebGroup.Month,
+                slot.MebGroup.GroupNo,
+                slot.MebGroup.Branch,
                 Present = slot.Attendances.Count(att => att.IsPresent),
                 Total = slot.Attendances.Count()
             })
@@ -185,9 +185,9 @@ public class OpenAiService : IAiService
             .ConfigureAwait(false);
 
         var totalStudentCount = await _context.Students.LongCountAsync(cancellationToken).ConfigureAwait(false);
-        var activeCourseCount = await _context.Courses
+        var activeCourseCount = await _context.MebGroups
             .AsNoTracking()
-            .CountAsync(course => course.MebApprovalStatus == "approved" || course.MebApprovalStatus == "pending", cancellationToken)
+            .CountAsync(group => group.MebApprovalStatus == "approved" || group.MebApprovalStatus == "pending", cancellationToken)
             .ConfigureAwait(false);
 
         var sections = new List<WeeklyDigestSectionDto>
@@ -227,7 +227,7 @@ public class OpenAiService : IAiService
                 Icon = "🛰️",
                 Description = "Kontrol edilmesi önerilen MEBBİS aktarım işleri.",
                 Highlights = pendingTransfers.Select(job =>
-                    $"#{job.Id} • {job.Mode.ToUpperInvariant()} • {job.Status.ToUpperInvariant()} • SRC{job.Course.SrcType} {job.Course.Year}-{job.Course.Month:00} GRUP {job.Course.GroupNo}{(string.IsNullOrWhiteSpace(job.Course.Branch) ? "" : $" ({job.Course.Branch})")} • {job.CreatedAt:dd.MM HH:mm}").ToList()
+                    $"#{job.Id} • {job.Mode.ToUpperInvariant()} • {job.Status.ToUpperInvariant()} • SRC{job.Group.SrcType} {job.Group.Year}-{job.Group.Month:00} GRUP {job.Group.GroupNo}{(string.IsNullOrWhiteSpace(job.Group.Branch) ? "" : $" ({job.Group.Branch})")} • {job.CreatedAt:dd.MM HH:mm}").ToList()
             });
         }
 

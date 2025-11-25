@@ -37,7 +37,7 @@ public class AttendanceController : ControllerBase
         var query = _context.Attendances
             .Include(a => a.Student)
             .Include(a => a.ScheduleSlot)
-                .ThenInclude(s => s.Course)
+                .ThenInclude(s => s.MebGroup)
             .AsQueryable();
 
         if (scheduleSlotId.HasValue)
@@ -67,10 +67,10 @@ public class AttendanceController : ControllerBase
                     a.ScheduleSlot.StartTime,
                     a.ScheduleSlot.EndTime,
                     a.ScheduleSlot.Subject,
-                    CourseInfo = new
+                    GroupInfo = new
                     {
-                        a.ScheduleSlot.Course.Id,
-                        a.ScheduleSlot.Course.SrcType
+                        a.ScheduleSlot.MebGroup.Id,
+                        a.ScheduleSlot.MebGroup.SrcType
                     }
                 },
                 a.IsPresent,

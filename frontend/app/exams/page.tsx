@@ -14,15 +14,13 @@ interface ExamListItem {
   mebSessionCode?: string | null;
   status: string;
   notes?: string | null;
-  courseInfo: {
+  groupInfo: {
     id: number;
     srcType: number;
-    groupInfo: {
       year: number;
       month: number;
       groupNo: number;
       branch?: string | null;
-    };
   };
   resultCount: number;
   passCount: number;
@@ -41,7 +39,7 @@ interface CourseListItem {
 type CoursesResponse = CourseListItem[] | { items: CourseListItem[] };
 
 interface CreateExamForm {
-  courseId: number;
+  mebGroupId: number;
   examType: string;
   examDate: string;
   mebSessionCode?: string;
@@ -60,7 +58,7 @@ type ExamListResponse =
 const PAGE_SIZE = 20;
 
 const initialForm: CreateExamForm = {
-  courseId: 0,
+  mebGroupId: 0,
   examType: "written",
   examDate: "",
   mebSessionCode: "",
@@ -186,12 +184,12 @@ export default function ExamsPage() {
   const loadCourses = async () => {
     try {
       setCoursesError("");
-      const response = await api.get<CoursesResponse>("/courses?page=1&pageSize=200");
+      const response = await api.get<CoursesResponse>("/courses/groups");
       const raw = response.data;
       const data = Array.isArray(raw) ? raw : raw?.items ?? [];
       setCourses(data);
       if (data.length) {
-        setFormData((prev) => ({ ...prev, courseId: prev.courseId || data[0].id }));
+        setFormData((prev) => ({ ...prev, mebGroupId: prev.mebGroupId || data[0].id }));
       }
     } catch (err: any) {
       console.error("Courses for exam load error:", err);
@@ -204,7 +202,7 @@ export default function ExamsPage() {
   const branchOptions = useMemo(() => {
     const unique = new Set<string>();
     exams.forEach((exam) => {
-      if (exam.courseInfo.groupInfo.branch) unique.add(exam.courseInfo.groupInfo.branch);
+      if (exam.groupInfo.branch) unique.add(exam.groupInfo.branch);
     });
     return Array.from(unique).sort();
   }, [exams]);
@@ -245,7 +243,15 @@ export default function ExamsPage() {
     }
     try {
       await api.delete(`/exams/${exam.id}`);
-      loadExams(true);
+      // Silme işleminden sonra sayfa numarasını kontrol et
+      // Eğer son sayfada tek eleman varsa ve silindiyse, bir önceki sayfaya geç
+      const currentPageItemCount = exams.length;
+      if (currentPageItemCount === 1 && page > 1) {
+        setPage(page - 1);
+      } else {
+        // Sayfa numarası değişmediyse, listeyi yeniden yükle
+        loadExams(false);
+      }
     } catch (err: any) {
       const message =
         err.response?.data?.message || err.message || "Sınav silinirken bir hata oluştu.";
@@ -260,7 +266,7 @@ export default function ExamsPage() {
 
     try {
       await api.post("/exams", {
-        courseId: formData.courseId,
+        mebGroupId: formData.mebGroupId,
         examType: formData.examType,
         examDate: new Date(formData.examDate).toISOString(),
         mebSessionCode: formData.mebSessionCode?.trim() || undefined,
@@ -503,11 +509,11 @@ export default function ExamsPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="text-lg font-bold text-gray-900">
-                            {examTypeText(exam.examType)} Sınavı • SRC{exam.courseInfo.srcType} •{" "}
-                            {exam.courseInfo.groupInfo.year}-{exam.courseInfo.groupInfo.month}-GRUP{" "}
-                            {exam.courseInfo.groupInfo.groupNo}
-                            {exam.courseInfo.groupInfo.branch
-                              ? ` (${exam.courseInfo.groupInfo.branch})`
+                            {examTypeText(exam.examType)} Sınavı • SRC{exam.groupInfo.srcType} •{" "}
+                            {exam.groupInfo.year}-{exam.groupInfo.month}-GRUP{" "}
+                            {exam.groupInfo.groupNo}
+                            {exam.groupInfo.branch
+                              ? ` (${exam.groupInfo.branch})`
                               : ""}
                           </h3>
                           <span
@@ -603,9 +609,9 @@ export default function ExamsPage() {
                 </label>
                 <select
                   required
-                  value={formData.courseId}
+                  value={formData.mebGroupId}
                   onChange={(e) =>
-                    setFormData({ ...formData, courseId: parseInt(e.target.value) })
+                    setFormData({ ...formData, mebGroupId: parseInt(e.target.value) })
                   }
                   className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >

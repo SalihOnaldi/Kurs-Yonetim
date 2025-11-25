@@ -43,16 +43,16 @@ public class AnalyticsController : ControllerBase
         var totalStudents = await _context.Students
             .AsNoTracking()
             .CountAsync(cancellationToken);
-        var activeCourses = await _context.Courses
+        var activeCourses = await _context.MebGroups
             .AsNoTracking()
-            .CountAsync(c => c.MebApprovalStatus != "draft", cancellationToken);
+            .CountAsync(g => g.MebApprovalStatus != "draft", cancellationToken);
 
         var occupancyQuery = await _context.MebGroups
             .AsNoTracking()
             .Select(group => new
             {
                 group.Capacity,
-                EnrollmentCount = group.Courses.SelectMany(course => course.Enrollments).Count()
+                EnrollmentCount = group.Enrollments.Count()
             })
             .ToListAsync(cancellationToken);
 
@@ -66,13 +66,13 @@ public class AnalyticsController : ControllerBase
             .CountAsync(doc => doc.DocDate != null && doc.DocDate <= soonDate, cancellationToken);
 
         var ninetyDays = DateTime.UtcNow.AddDays(-90);
-        var lowAttendanceCourses = await _context.Courses
+        var lowAttendanceGroups = await _context.MebGroups
             .AsNoTracking()
-            .Where(course => course.ScheduleSlots.Any(slot => slot.StartTime >= ninetyDays))
-            .Select(course => new
+            .Where(group => group.ScheduleSlots.Any(slot => slot.StartTime >= ninetyDays))
+            .Select(group => new
             {
-                course.Id,
-                AttendanceRate = course.ScheduleSlots
+                group.Id,
+                AttendanceRate = group.ScheduleSlots
                     .Where(slot => slot.StartTime >= ninetyDays)
                     .Select(slot => new
                     {
@@ -83,9 +83,9 @@ public class AnalyticsController : ControllerBase
             })
             .ToListAsync(cancellationToken);
 
-        var lowAttendanceCount = lowAttendanceCourses.Count(course =>
+        var lowAttendanceCount = lowAttendanceGroups.Count(group =>
         {
-            var totals = course.AttendanceRate.ToList();
+            var totals = group.AttendanceRate.ToList();
             if (totals.Count == 0) return false;
             var attended = totals.Sum(item => item.Attended);
             var total = totals.Sum(item => item.Total);
@@ -186,8 +186,7 @@ public class AnalyticsController : ControllerBase
 
         var data = await _context.MebGroups
             .AsNoTracking()
-            .Select(group => group.Courses.SelectMany(course => course.ScheduleSlots))
-            .SelectMany(slots => slots)
+            .SelectMany(group => group.ScheduleSlots)
             .Where(slot => slot.StartTime >= start)
             .Select(slot => new
             {

@@ -14,7 +14,7 @@ type InstructorSummary = {
 
 type ScheduleSlot = {
   id: number;
-  courseId: number;
+  mebGroupId: number;
   instructorId?: number | null;
   instructor?: {
     id: number;
@@ -84,7 +84,7 @@ const toInputDate = (value: Date | string) => {
 export default function CourseSchedulerPage() {
   const router = useRouter();
   const params = useParams();
-  const courseId = Number(params.id);
+  const mebGroupId = Number(params.id);
 
   const [authorized, setAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -131,7 +131,7 @@ export default function CourseSchedulerPage() {
   });
 
   useEffect(() => {
-    if (!courseId || Number.isNaN(courseId)) {
+    if (!mebGroupId || Number.isNaN(mebGroupId)) {
       router.push("/courses");
       return;
     }
@@ -147,7 +147,7 @@ export default function CourseSchedulerPage() {
       .then(() => setAuthorized(true))
       .catch(() => router.push("/login"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId]);
+  }, [mebGroupId]);
 
   useEffect(() => {
     if (!authorized) return;
@@ -161,7 +161,7 @@ export default function CourseSchedulerPage() {
     try {
       setLoading(true);
       setError("");
-      const response = await api.get<CourseDetailResponse>(`/courses/${courseId}`);
+      const response = await api.get<CourseDetailResponse>(`/courses/groups/${mebGroupId}/detail`);
       setCourse(response.data);
     } catch (err: any) {
       const message = err.response?.data?.message || err.message || "Kurs bilgileri yüklenemedi.";
@@ -173,7 +173,7 @@ export default function CourseSchedulerPage() {
 
   const loadSchedule = async () => {
     try {
-      const response = await api.get<ScheduleSlot[]>(`/schedule?courseId=${courseId}`);
+      const response = await api.get<ScheduleSlot[]>(`/schedule?mebGroupId=${mebGroupId}`);
       setSchedule(response.data || []);
     } catch (err) {
       console.error("Schedule load error:", err);
@@ -368,7 +368,7 @@ export default function CourseSchedulerPage() {
       }
 
       const payload = {
-        courseId,
+        mebGroupId: mebGroupId,
         instructorId: slotForm.instructorId ? Number(slotForm.instructorId) : undefined,
         classroomName: slotForm.classroomName || undefined,
         subject: slotForm.subject || undefined,
@@ -490,7 +490,7 @@ export default function CourseSchedulerPage() {
 
         try {
           await api.post("/schedule", {
-            courseId,
+            mebGroupId: mebGroupId,
             instructorId: bulkForm.instructorId ? Number(bulkForm.instructorId) : undefined,
             classroomName: bulkForm.classroomName || undefined,
             subject: bulkForm.subject || undefined,
@@ -550,7 +550,7 @@ export default function CourseSchedulerPage() {
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Planlayıcı yüklenemedi</h1>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
-            onClick={() => router.push(`/courses/${courseId}`)}
+            onClick={() => router.push(`/courses/${mebGroupId}`)}
             className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
           >
             Kurs detayına geri dön
@@ -574,7 +574,7 @@ export default function CourseSchedulerPage() {
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => router.push(`/courses/${courseId}`)}
+                onClick={() => router.push(`/courses/${mebGroupId}`)}
                 className="text-indigo-600 hover:text-indigo-800 font-medium"
               >
                 ← Kurs Detayına Dön

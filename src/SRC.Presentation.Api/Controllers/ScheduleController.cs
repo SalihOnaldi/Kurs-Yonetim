@@ -66,7 +66,7 @@ public class ScheduleController : ControllerBase
         return new
         {
             slot.Id,
-            slot.CourseId,
+            slot.MebGroupId,
             slot.InstructorId,
             Instructor = slot.Instructor != null ? new
             {
@@ -88,17 +88,16 @@ public class ScheduleController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult> GetAll([FromQuery] int? courseId, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
+    public async Task<ActionResult> GetAll([FromQuery] int? mebGroupId, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
     {
         var query = _context.ScheduleSlots
-            .Include(s => s.Course)
-                .ThenInclude(c => c.MebGroup)
+            .Include(s => s.MebGroup)
             .Include(s => s.Instructor)
             .AsQueryable();
 
-        if (courseId.HasValue)
+        if (mebGroupId.HasValue)
         {
-            query = query.Where(s => s.CourseId == courseId.Value);
+            query = query.Where(s => s.MebGroupId == mebGroupId.Value);
         }
 
         if (startDate.HasValue)
@@ -115,16 +114,14 @@ public class ScheduleController : ControllerBase
             .Select(s => new
             {
                 s.Id,
-                CourseInfo = new
-                {
-                    s.Course.Id,
-                    s.Course.SrcType,
                     GroupInfo = new
                     {
-                        s.Course.MebGroup.Year,
-                        s.Course.MebGroup.Month,
-                        s.Course.MebGroup.GroupNo
-                    }
+                    s.MebGroup.Id,
+                    s.MebGroup.SrcType,
+                    s.MebGroup.Year,
+                    s.MebGroup.Month,
+                    s.MebGroup.GroupNo,
+                    s.MebGroup.Branch
                 },
                 InstructorInfo = s.Instructor != null ? new
                 {
@@ -246,21 +243,15 @@ public class ScheduleController : ControllerBase
                 s.Subject,
                 s.Notes,
                 s.ClassroomName,
-                s.CourseId,
-                Course = new
-                {
-                    s.Course.Id,
-                    s.Course.SrcType,
-                    Group = s.Course.MebGroup != null
-                        ? new
+                s.MebGroupId,
+                Group = new
                         {
-                            s.Course.MebGroup.Id,
-                            s.Course.MebGroup.Year,
-                            s.Course.MebGroup.Month,
-                            s.Course.MebGroup.GroupNo,
-                            s.Course.MebGroup.Branch
-                        }
-                        : null
+                    s.MebGroup.Id,
+                    s.MebGroup.SrcType,
+                    s.MebGroup.Year,
+                    s.MebGroup.Month,
+                    s.MebGroup.GroupNo,
+                    s.MebGroup.Branch
                 }
             })
             .ToListAsync();
@@ -274,8 +265,8 @@ public class ScheduleController : ControllerBase
                 slot.Subject,
                 slot.Notes,
                 slot.ClassroomName,
-                slot.CourseId,
-                slot.Course,
+                slot.MebGroupId,
+                Group = slot.Group,
                 durationMinutes = GetDurationMinutes(slot.StartTime, slot.EndTime)
             })
             .ToList();
@@ -299,10 +290,10 @@ public class ScheduleController : ControllerBase
     [HttpPost]
     public async Task<ActionResult> Create([FromBody] CreateScheduleSlotRequest request)
     {
-        var course = await _context.Courses.FindAsync(request.CourseId);
-        if (course == null)
+        var group = await _context.MebGroups.FindAsync(request.MebGroupId);
+        if (group == null)
         {
-            return BadRequest(new { message = "Kurs bulunamadı" });
+            return BadRequest(new { message = "Sınıf bulunamadı" });
         }
 
         if (request.EndTime <= request.StartTime)
@@ -330,7 +321,7 @@ public class ScheduleController : ControllerBase
 
         var slot = new SRC.Domain.Entities.ScheduleSlot
         {
-            CourseId = request.CourseId,
+            MebGroupId = request.MebGroupId,
             InstructorId = request.InstructorId,
             ClassroomId = request.ClassroomId,
             ClassroomName = request.ClassroomName,
@@ -417,7 +408,7 @@ public class ScheduleController : ControllerBase
 
 public class CreateScheduleSlotRequest
 {
-    public int CourseId { get; set; }
+    public int MebGroupId { get; set; }
     public int? InstructorId { get; set; }
     public int? ClassroomId { get; set; }
     public string? ClassroomName { get; set; }

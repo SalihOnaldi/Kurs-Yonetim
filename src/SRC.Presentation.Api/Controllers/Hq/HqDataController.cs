@@ -105,15 +105,7 @@ public class HqDataController : ControllerBase
                 await _context.SaveChangesAsync(cancellationToken);
             }
 
-            // 9. Courses
-            var courses = await _context.Courses
-                .IgnoreQueryFilters()
-                .ToListAsync(cancellationToken);
-            if (courses.Any())
-            {
-                _context.Courses.RemoveRange(courses);
-                await _context.SaveChangesAsync(cancellationToken);
-            }
+            // Courses artık MebGroup içinde, bu adım atlandı
 
             // 10. MebGroups
             var mebGroups = await _context.MebGroups
@@ -351,15 +343,7 @@ public class HqDataController : ControllerBase
                 await _context.SaveChangesAsync(cancellationToken);
             }
 
-            // 9. Courses
-            var courses = await _context.Courses
-                .IgnoreQueryFilters()
-                .ToListAsync(cancellationToken);
-            if (courses.Any())
-            {
-                _context.Courses.RemoveRange(courses);
-                await _context.SaveChangesAsync(cancellationToken);
-            }
+            // Courses artık MebGroup içinde, bu adım atlandı
 
             // 10. MebGroups
             var mebGroups = await _context.MebGroups
@@ -521,5 +505,174 @@ public class HqDataController : ControllerBase
             });
         }
     }
+
+    [HttpPost("bulk-students/{tenantId}")]
+    public async Task<IActionResult> CreateBulkStudents(string tenantId, [FromBody] BulkStudentRequest? request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Tenant kontrolü
+            var tenant = await _context.Tenants
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(t => t.Id == tenantId || t.Username == tenantId, cancellationToken);
+
+            if (tenant == null)
+            {
+                return NotFound(new { message = $"Tenant bulunamadı: {tenantId}" });
+            }
+
+            var count = request?.Count ?? 4500;
+            if (count <= 0 || count > 10000)
+            {
+                return BadRequest(new { message = "Öğrenci sayısı 1-10000 arasında olmalıdır." });
+            }
+
+            // SRC kombinasyonları (SRC1-SRC5)
+            var srcCombinations = new List<List<int>>
+            {
+                new List<int> { 1 },      // SRC1
+                new List<int> { 2 },      // SRC2
+                new List<int> { 3 },      // SRC3
+                new List<int> { 4 },      // SRC4
+                new List<int> { 5 },      // SRC5
+                new List<int> { 1, 2 },   // SRC1+SRC2
+                new List<int> { 1, 3 },   // SRC1+SRC3
+                new List<int> { 1, 4 },   // SRC1+SRC4
+                new List<int> { 1, 5 },   // SRC1+SRC5
+                new List<int> { 2, 3 },   // SRC2+SRC3
+                new List<int> { 2, 4 },   // SRC2+SRC4
+                new List<int> { 2, 5 },   // SRC2+SRC5
+                new List<int> { 3, 4 },   // SRC3+SRC4
+                new List<int> { 3, 5 },   // SRC3+SRC5
+                new List<int> { 4, 5 },   // SRC4+SRC5
+                new List<int> { 1, 2, 3 }, // SRC1+SRC2+SRC3
+                new List<int> { 1, 2, 4 }, // SRC1+SRC2+SRC4
+                new List<int> { 1, 2, 5 }, // SRC1+SRC2+SRC5
+                new List<int> { 1, 3, 4 }, // SRC1+SRC3+SRC4
+                new List<int> { 1, 3, 5 }, // SRC1+SRC3+SRC5
+                new List<int> { 1, 4, 5 }, // SRC1+SRC4+SRC5
+                new List<int> { 2, 3, 4 }, // SRC2+SRC3+SRC4
+                new List<int> { 2, 3, 5 }, // SRC2+SRC3+SRC5
+                new List<int> { 2, 4, 5 }, // SRC2+SRC4+SRC5
+                new List<int> { 3, 4, 5 }, // SRC3+SRC4+SRC5
+                new List<int> { 1, 2, 3, 4 }, // SRC1+SRC2+SRC3+SRC4
+                new List<int> { 1, 2, 3, 5 }, // SRC1+SRC2+SRC3+SRC5
+                new List<int> { 1, 2, 4, 5 }, // SRC1+SRC2+SRC4+SRC5
+                new List<int> { 1, 3, 4, 5 }, // SRC1+SRC3+SRC4+SRC5
+                new List<int> { 2, 3, 4, 5 }, // SRC2+SRC3+SRC4+SRC5
+                new List<int> { 1, 2, 3, 4, 5 } // Tümü
+            };
+
+            var turkishFirstNames = new[] { "Ahmet", "Mehmet", "Ali", "Mustafa", "Hasan", "Hüseyin", "İbrahim", "İsmail", "Osman", "Yusuf", 
+                "Ayşe", "Fatma", "Zeynep", "Emine", "Hatice", "Elif", "Merve", "Selin", "Derya", "Gülay", 
+                "Can", "Burak", "Emre", "Kerem", "Onur", "Serkan", "Tolga", "Uğur", "Volkan", "Yasin",
+                "Seda", "Burcu", "Ceren", "Deniz", "Ebru", "Gizem", "Hande", "İpek", "Jale", "Kader" };
+
+            var turkishLastNames = new[] { "Yılmaz", "Kaya", "Demir", "Şahin", "Çelik", "Yıldız", "Yıldırım", "Öztürk", "Aydın", "Özdemir",
+                "Arslan", "Doğan", "Kılıç", "Aslan", "Çetin", "Kara", "Koç", "Polat", "Kurt", "Özkan",
+                "Şimşek", "Aksoy", "Çakır", "Erdoğan", "Akar", "Bulut", "Güneş", "Türk", "Yücel", "Avcı" };
+
+            var educationLevels = new[] { "İlkokul", "Ortaokul", "Lise", "Üniversite", "Yüksek Lisans" };
+            var licenseTypes = new[] { "B", "C", "D", "E", "F", "G" };
+
+            var random = new Random();
+            var students = new List<SRC.Domain.Entities.Student>();
+            var baseTc = 10000000000L; // 11 haneli TC başlangıç
+            var studentIndex = 0;
+            var studentsPerCombination = count / srcCombinations.Count;
+            var remaining = count % srcCombinations.Count;
+
+            foreach (var srcCombo in srcCombinations)
+            {
+                var comboCount = studentsPerCombination + (remaining > 0 ? 1 : 0);
+                remaining--;
+
+                for (int i = 0; i < comboCount && studentIndex < count; i++)
+                {
+                    var firstName = turkishFirstNames[random.Next(turkishFirstNames.Length)];
+                    var lastName = turkishLastNames[random.Next(turkishLastNames.Length)];
+                    var tcKimlikNo = (baseTc + studentIndex).ToString();
+                    
+                    // Mevcut TC kontrolü
+                    var existingTc = await _context.Students
+                        .IgnoreQueryFilters()
+                        .AnyAsync(s => s.TcKimlikNo == tcKimlikNo, cancellationToken);
+                    
+                    if (existingTc)
+                    {
+                        // Eğer TC mevcutsa, benzersiz bir TC oluştur
+                        tcKimlikNo = (baseTc + studentIndex + 9999999999L).ToString();
+                    }
+
+                    var birthYear = random.Next(1970, 2005);
+                    var birthMonth = random.Next(1, 13);
+                    var birthDay = random.Next(1, 29);
+                    var birthDate = new DateTime(birthYear, birthMonth, birthDay, 0, 0, 0, DateTimeKind.Utc);
+
+                    var licenseIssueYear = random.Next(birthYear + 18, 2024);
+                    var licenseIssueMonth = random.Next(1, 13);
+                    var licenseIssueDay = random.Next(1, 29);
+                    var licenseIssueDate = new DateTime(licenseIssueYear, licenseIssueMonth, licenseIssueDay, 0, 0, 0, DateTimeKind.Utc);
+
+                    var student = new SRC.Domain.Entities.Student
+                    {
+                        TenantId = tenant.Id,
+                        TcKimlikNo = tcKimlikNo,
+                        FirstName = firstName,
+                        LastName = lastName,
+                        BirthDate = birthDate,
+                        Phone = $"05{random.Next(10, 100)} {random.Next(100, 1000)} {random.Next(10, 100)} {random.Next(10, 100)}",
+                        Email = $"{firstName.ToLower()}.{lastName.ToLower()}{studentIndex}@example.com",
+                        Address = $"{random.Next(1, 200)}. Sokak, {random.Next(1, 100)}. Cadde, {random.Next(1, 50)}. Mahalle",
+                        EducationLevel = educationLevels[random.Next(educationLevels.Length)],
+                        LicenseType = licenseTypes[random.Next(licenseTypes.Length)],
+                        LicenseIssueDate = licenseIssueDate,
+                        SelectedSrcCourses = string.Join(",", srcCombo.OrderBy(x => x)),
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    students.Add(student);
+                    studentIndex++;
+
+                    // Her 100 öğrencide bir batch olarak kaydet
+                    if (students.Count >= 100)
+                    {
+                        _context.Students.AddRange(students);
+                        await _context.SaveChangesAsync(cancellationToken);
+                        students.Clear();
+                    }
+                }
+            }
+
+            // Kalan öğrencileri kaydet
+            if (students.Any())
+            {
+                _context.Students.AddRange(students);
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+
+            return Ok(new
+            {
+                message = $"{studentIndex} öğrenci başarıyla eklendi.",
+                tenantId = tenant.Id,
+                tenantName = tenant.Name,
+                count = studentIndex
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                message = "Öğrenci eklenirken bir hata oluştu.",
+                error = ex.Message,
+                stackTrace = ex.StackTrace
+            });
+        }
+    }
+}
+
+public class BulkStudentRequest
+{
+    public int Count { get; set; } = 4500;
 }
 

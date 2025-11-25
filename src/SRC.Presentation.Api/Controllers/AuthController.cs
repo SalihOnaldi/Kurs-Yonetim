@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using SRC.Application.DTOs.Auth;
 using SRC.Application.Interfaces;
+using SRC.Application.Interfaces.Notifications;
 using SRC.Infrastructure.Data;
 using System.Security.Claims;
 using System.IdentityModel.Tokens.Jwt;
@@ -19,12 +20,21 @@ public class AuthController : ControllerBase
     private readonly IUserService _userService;
     private readonly SrcDbContext _context;
     private readonly IConfiguration _configuration;
+    private readonly IEmailSender _emailSender;
+    private readonly ISmsSender _smsSender;
 
-    public AuthController(IUserService userService, SrcDbContext context, IConfiguration configuration)
+    public AuthController(
+        IUserService userService, 
+        SrcDbContext context, 
+        IConfiguration configuration,
+        IEmailSender emailSender,
+        ISmsSender smsSender)
     {
         _userService = userService;
         _context = context;
         _configuration = configuration;
+        _emailSender = emailSender;
+        _smsSender = smsSender;
     }
 
     [HttpPost("login")]
@@ -177,5 +187,219 @@ public class AuthController : ControllerBase
 
         return Ok(user);
     }
+
+    [HttpPost("forgot-password")]
+    public async Task<ActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Username))
+        {
+            return BadRequest(new { message = "Kullanıcı adı gereklidir." });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Channel) || (request.Channel != "email" && request.Channel != "sms"))
+        {
+            return BadRequest(new { message = "Geçerli bir kanal seçiniz (email veya sms)." });
+        }
+
+        // Kullanıcıyı bul
+        var user = await _context.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Username == request.Username && u.IsActive);
+
+        if (user == null)
+        {
+            // Tenant kontrolü
+            var tenant = await _context.Tenants
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(t => t.Username == request.Username && t.IsActive);
+
+            if (tenant == null)
+            {
+                // Güvenlik nedeniyle kullanıcı bulunamadı mesajı göster
+                return Ok(new { message = "Şifre sıfırlama kodu gönderildi." });
+            }
+
+            // Tenant için şifre sıfırlama token'ı oluştur
+            var tenantToken = GenerateResetToken();
+            var tenantResetToken = new SRC.Domain.Entities.PasswordResetToken
+            {
+                Username = tenant.Username,
+                Token = tenantToken,
+                Email = tenant.ContactEmail,
+                Phone = tenant.ContactPhone,
+                Channel = request.Channel,
+                CreatedAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddHours(1),
+                IsUsed = false
+            };
+
+            _context.PasswordResetTokens.Add(tenantResetToken);
+            await _context.SaveChangesAsync();
+
+            // Token gönder
+            if (request.Channel == "email" && !string.IsNullOrWhiteSpace(tenant.ContactEmail))
+            {
+                var emailBody = $@"
+Merhaba,
+
+Şifre sıfırlama kodunuz: {tenantToken}
+
+Bu kod 1 saat geçerlidir.
+
+Eğer bu işlemi siz yapmadıysanız, lütfen bu e-postayı görmezden gelin.
+
+İyi günler.
+";
+                await _emailSender.SendAsync(tenant.ContactEmail, "Şifre Sıfırlama Kodu", emailBody);
+            }
+            else if (request.Channel == "sms" && !string.IsNullOrWhiteSpace(tenant.ContactPhone))
+            {
+                var smsBody = $"SRC Kurs Yönetim Sistemi - Şifre sıfırlama kodunuz: {tenantToken}. Bu kod 1 saat geçerlidir.";
+                await _smsSender.SendAsync(tenant.ContactPhone, smsBody);
+            }
+            else
+            {
+                return BadRequest(new { message = "Seçilen kanal için iletişim bilgisi bulunamadı." });
+            }
+
+            return Ok(new { message = "Şifre sıfırlama kodu gönderildi." });
+        }
+
+        // Kullanıcı için şifre sıfırlama token'ı oluştur
+        var token = GenerateResetToken();
+        var resetToken = new SRC.Domain.Entities.PasswordResetToken
+        {
+            Username = user.Username,
+            Token = token,
+            Email = user.Email,
+            Channel = request.Channel,
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddHours(1),
+            IsUsed = false
+        };
+
+        _context.PasswordResetTokens.Add(resetToken);
+        await _context.SaveChangesAsync();
+
+        // Token gönder
+        if (request.Channel == "email" && !string.IsNullOrWhiteSpace(user.Email))
+        {
+            var emailBody = $@"
+Merhaba {user.FullName},
+
+Şifre sıfırlama kodunuz: {token}
+
+Bu kod 1 saat geçerlidir.
+
+Eğer bu işlemi siz yapmadıysanız, lütfen bu e-postayı görmezden gelin.
+
+İyi günler.
+";
+            await _emailSender.SendAsync(user.Email, "Şifre Sıfırlama Kodu", emailBody);
+        }
+        else if (request.Channel == "sms")
+        {
+            // SMS için telefon numarası gerekli ama User entity'sinde yok
+            // Bu durumda e-posta kullanılmalı
+            return BadRequest(new { message = "SMS gönderimi için telefon numarası gereklidir. Lütfen e-posta kanalını kullanın." });
+        }
+        else
+        {
+            return BadRequest(new { message = "E-posta adresi bulunamadı." });
+        }
+
+        return Ok(new { message = "Şifre sıfırlama kodu gönderildi." });
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<ActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            return BadRequest(new { message = "Kullanıcı adı, token ve yeni şifre gereklidir." });
+        }
+
+        if (request.NewPassword.Length < 6)
+        {
+            return BadRequest(new { message = "Şifre en az 6 karakter olmalıdır." });
+        }
+
+        // Token'ı bul ve kontrol et
+        var resetToken = await _context.PasswordResetTokens
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.Username == request.Username && t.Token == request.Token && !t.IsUsed);
+
+        if (resetToken == null)
+        {
+            return BadRequest(new { message = "Geçersiz veya kullanılmış token." });
+        }
+
+        if (resetToken.ExpiresAt < DateTime.UtcNow)
+        {
+            return BadRequest(new { message = "Token süresi dolmuş." });
+        }
+
+        // Kullanıcıyı bul ve şifresini güncelle
+        var user = await _context.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Username == request.Username && u.IsActive);
+
+        if (user != null)
+        {
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            user.UpdatedAt = DateTime.UtcNow;
+            resetToken.IsUsed = true;
+            resetToken.UsedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "Şifre başarıyla sıfırlandı." });
+        }
+
+        // Tenant kontrolü
+        var tenant = await _context.Tenants
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.Username == request.Username && t.IsActive);
+
+        if (tenant != null)
+        {
+            tenant.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            resetToken.IsUsed = true;
+            resetToken.UsedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            // Tenant kullanıcısının şifresini de güncelle
+            var tenantUser = await _context.Users
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(u => u.Username == $"tenant_{tenant.Id}" && u.Role == "BranchAdmin");
+
+            if (tenantUser != null)
+            {
+                tenantUser.PasswordHash = tenant.PasswordHash;
+                await _context.SaveChangesAsync();
+            }
+
+            return Ok(new { message = "Şifre başarıyla sıfırlandı." });
+        }
+
+        return BadRequest(new { message = "Kullanıcı bulunamadı." });
+    }
+
+    private static string GenerateResetToken()
+    {
+        var random = new Random();
+        return random.Next(100000, 999999).ToString();
+    }
+}
+
+public class ForgotPasswordRequest
+{
+    public string Username { get; set; } = string.Empty;
+    public string Channel { get; set; } = "email"; // email, sms
+}
+
+public class ResetPasswordRequest
+{
+    public string Username { get; set; } = string.Empty;
+    public string Token { get; set; } = string.Empty;
+    public string NewPassword { get; set; } = string.Empty;
 }
 

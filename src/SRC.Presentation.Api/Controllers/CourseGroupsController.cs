@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SRC.Infrastructure.Data;
 using SRC.Domain.Entities;
-using SRC.Presentation.Api.Utilities;
+using SRC.Infrastructure.Utilities;
 
 namespace SRC.Presentation.Api.Controllers;
 
@@ -28,38 +28,65 @@ public class CourseGroupsController : ControllerBase
         [FromQuery] string? branch,
         [FromQuery] string? status)
     {
-        var groups = await _context.MebGroups
-            .AsNoTracking()
-            .Include(g => g.Courses)
-            .Where(g =>
-                (!year.HasValue || g.Year == year.Value) &&
-                (!month.HasValue || g.Month == month.Value) &&
-                (string.IsNullOrWhiteSpace(branch) ||
-                    (g.Branch != null && g.Branch.ToLower() == branch.Trim().ToLower())) &&
-                (string.IsNullOrWhiteSpace(status) ||
-                    g.Status.ToLower() == status.Trim().ToLower()))
-            .Select(g => new
-            {
-                g.Id,
-                g.Year,
-                g.Month,
-                g.GroupNo,
-                g.Branch,
-                g.StartDate,
-                g.EndDate,
-                g.Capacity,
-                g.Status,
-                Name = MebNamingHelper.BuildGroupName(g),
-                CourseCount = g.Courses.Count,
-                ActiveCourseCount = g.Courses.Count(c => c.MebApprovalStatus != "rejected"),
-                g.CreatedAt
-            })
-            .OrderByDescending(g => g.Year)
-            .ThenByDescending(g => g.Month)
-            .ThenBy(g => g.GroupNo)
-            .ToListAsync();
+        try
+        {
+            var query = _context.MebGroups
+                .AsNoTracking()
+                .AsQueryable();
 
-        return Ok(groups);
+            if (year.HasValue)
+            {
+                query = query.Where(g => g.Year == year.Value);
+            }
+
+            if (month.HasValue)
+            {
+                query = query.Where(g => g.Month == month.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(branch))
+            {
+                query = query.Where(g => g.Branch != null && g.Branch.ToLower() == branch.Trim().ToLower());
+            }
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                query = query.Where(g => g.Status.ToLower() == status.Trim().ToLower());
+            }
+
+            var groups = await query
+                .Select(g => new
+                {
+                    id = g.Id,
+                    year = g.Year,
+                    month = g.Month,
+                    groupNo = g.GroupNo,
+                    branch = g.Branch,
+                    startDate = g.StartDate,
+                    endDate = g.EndDate,
+                    capacity = g.Capacity,
+                    status = g.Status,
+                    name = MebNamingHelper.BuildGroupName(g),
+                    srcType = g.SrcType,
+                    isMixed = g.IsMixed,
+                    mixedTypes = g.MixedTypes,
+                    plannedHours = g.PlannedHours,
+                    mebApprovalStatus = g.MebApprovalStatus,
+                    enrollmentCount = g.Enrollments.Count,
+                    createdAt = g.CreatedAt
+                })
+                .OrderByDescending(g => g.year)
+                .ThenByDescending(g => g.month)
+                .ThenBy(g => g.groupNo)
+                .ToListAsync();
+
+            return Ok(groups);
+        }
+        catch (Exception ex)
+        {
+            // Log the exception
+            return StatusCode(500, new { message = "Sınıflar yüklenirken hata oluştu.", error = ex.Message, stackTrace = ex.StackTrace });
+        }
     }
 
     [HttpGet("{id}/detail")]
@@ -67,9 +94,8 @@ public class CourseGroupsController : ControllerBase
     {
         var group = await _context.MebGroups
             .AsNoTracking()
-            .Include(g => g.Courses)
-                .ThenInclude(c => c.Enrollments)
-                    .ThenInclude(e => e.Student)
+            .Include(g => g.Enrollments)
+                .ThenInclude(e => e.Student)
             .FirstOrDefaultAsync(g => g.Id == id);
 
         if (group == null)
@@ -77,8 +103,84 @@ public class CourseGroupsController : ControllerBase
             return NotFound(new { message = "MEB grubu bulunamadı." });
         }
 
+        var now = DateTime.UtcNow;
+        var enrollments = group.Enrollments
+            .OrderBy(e => e.Student.LastName)
+            .ThenBy(e => e.Student.FirstName)
+            .ToList();
+
+        var scheduleSlots = await _context.ScheduleSlots
+            .AsNoTracking()
+            .Include(s => s.Instructor)
+            .Include(s => s.Attendances)
+            .Where(s => s.MebGroupId == id)
+            .OrderBy(s => s.StartTime)
+            .Select(s => new
+            {
+                s.Id,
+                s.Subject,
+                s.ClassroomName,
+                s.StartTime,
+                s.EndTime,
+                Instructor = s.Instructor != null ? new
+                {
+                    s.Instructor.Id,
+                    s.Instructor.FullName,
+                    s.Instructor.Username
+                } : null,
+                AttendanceCount = s.Attendances.Count,
+                PresentCount = s.Attendances.Count(a => a.IsPresent)
+            })
+            .ToListAsync();
+
+        var exams = await _context.Exams
+            .AsNoTracking()
+            .Include(e => e.ExamResults)
+            .Where(e => e.MebGroupId == id)
+            .OrderBy(e => e.ExamDate)
+            .Select(e => new
+            {
+                e.Id,
+                e.ExamType,
+                e.ExamDate,
+                e.MebSessionCode,
+                e.Status,
+                e.Notes,
+                ParticipantCount = e.ExamResults.Count,
+                PassedCount = e.ExamResults.Count(r => r.Pass),
+                FailedCount = e.ExamResults.Count(r => !r.Pass)
+            })
+            .ToListAsync();
+
+        var mebbisTransfers = await _context.MebbisTransferJobs
+            .AsNoTracking()
+            .Where(j => j.MebGroupId == id)
+            .OrderByDescending(j => j.CreatedAt)
+            .Take(5)
+            .Select(j => new
+            {
+                j.Id,
+                j.Mode,
+                j.Status,
+                j.SuccessCount,
+                j.FailureCount,
+                j.ErrorMessage,
+                j.StartedAt,
+                j.CompletedAt,
+                j.CreatedAt
+            })
+            .ToListAsync();
+
+        var activeEnrollments = enrollments.Count(e => e.Status == "active");
+        var completedEnrollments = enrollments.Count(e => e.Status == "completed");
+        var upcomingScheduleCount = scheduleSlots.Count(s => s.StartTime >= now);
+        var upcomingExamCount = exams.Count(e => e.ExamDate >= now);
+        var lastTransfer = mebbisTransfers.FirstOrDefault();
+        var lastTransferStatus = lastTransfer != null ? lastTransfer.Status : null;
+
         var response = new
         {
+            id = group.Id,
             group.Id,
             group.Year,
             group.Month,
@@ -88,34 +190,77 @@ public class CourseGroupsController : ControllerBase
             group.EndDate,
             group.Capacity,
             group.Status,
-            Name = MebNamingHelper.BuildGroupName(group),
-            Courses = group.Courses.Select(course => new
+            group.SrcType,
+            srcTypeName = $"SRC{group.SrcType}",
+            group.IsMixed,
+            group.MixedTypes,
+            group.PlannedHours,
+            group.MebApprovalStatus,
+            approvalAt = group.ApprovalAt,
+            approvalNotes = group.ApprovalNotes,
+            createdAt = group.CreatedAt,
+            updatedAt = group.UpdatedAt,
+            name = MebNamingHelper.BuildGroupName(group),
+            group = new
             {
-                course.Id,
-                course.SrcType,
-                course.PlannedHours,
-                course.MebApprovalStatus,
-                CourseName = MebNamingHelper.BuildCourseName(course.SrcType, group),
-                Enrollments = course.Enrollments
-                    .OrderBy(e => e.Student.LastName)
-                    .ThenBy(e => e.Student.FirstName)
-                    .Select(enrollment => new
-                    {
-                        enrollment.Id,
-                        enrollment.StudentId,
-                        enrollment.Status,
-                        enrollment.EnrollmentDate,
-                        Student = new
-                        {
-                            enrollment.Student.Id,
-                            enrollment.Student.TcKimlikNo,
-                            enrollment.Student.FirstName,
-                            enrollment.Student.LastName,
-                            enrollment.Student.Phone,
-                            enrollment.Student.Email
-                        }
-                    })
-            })
+                id = group.Id,
+                group.Id,
+                group.Year,
+                group.Month,
+                monthName = new DateTime(group.Year, group.Month, 1).ToString("MMMM", new System.Globalization.CultureInfo("tr-TR")),
+                group.GroupNo,
+                group.Branch,
+                group.StartDate,
+                group.EndDate,
+                group.Capacity,
+                group.Status,
+                name = MebNamingHelper.BuildGroupName(group)
+            },
+            enrollments = enrollments.Select(enrollment => new
+            {
+                enrollment.Id,
+                enrollment.StudentId,
+                enrollment.Status,
+                enrollment.EnrollmentDate,
+                Student = new
+                {
+                    enrollment.Student.Id,
+                    enrollment.Student.TcKimlikNo,
+                    enrollment.Student.FirstName,
+                    enrollment.Student.LastName,
+                    enrollment.Student.Phone,
+                    enrollment.Student.Email
+                }
+            }),
+            students = enrollments.Select(enrollment => new
+            {
+                id = enrollment.Id,
+                student = new
+                {
+                    enrollment.Student.Id,
+                    enrollment.Student.TcKimlikNo,
+                    enrollment.Student.FirstName,
+                    enrollment.Student.LastName,
+                    enrollment.Student.Phone,
+                    enrollment.Student.Email
+                },
+                status = enrollment.Status,
+                enrollmentDate = enrollment.EnrollmentDate,
+                attendanceRate = (double?)null, // Bu bilgiyi ayrı hesaplamak gerekebilir
+                examAttempts = 0 // Bu bilgiyi ayrı hesaplamak gerekebilir
+            }),
+            schedule = scheduleSlots,
+            exams = exams,
+            mebbisTransfers = mebbisTransfers,
+            summary = new
+            {
+                totalEnrollments = enrollments.Count,
+                activeEnrollments = activeEnrollments,
+                completedEnrollments = completedEnrollments,
+                upcomingScheduleCount = upcomingScheduleCount,
+                upcomingExamCount = upcomingExamCount,
+                lastTransferStatus = lastTransferStatus
+            }
         };
 
         return Ok(response);
@@ -124,9 +269,49 @@ public class CourseGroupsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult> Create([FromBody] CreateCourseGroupRequest request)
     {
-        if (request.StartDate >= request.EndDate)
+        // Validasyonlar
+        if (request.Year < 2020 || request.Year > 2100)
+        {
+            return BadRequest(new { message = "Geçerli bir yıl giriniz." });
+        }
+        
+        if (request.Month < 1 || request.Month > 12)
+        {
+            return BadRequest(new { message = "Geçerli bir ay giriniz (1-12)." });
+        }
+        
+        if (request.GroupNo < 1)
+        {
+            return BadRequest(new { message = "Grup numarası en az 1 olmalıdır." });
+        }
+        
+        if (request.StartDate == default || request.EndDate == default)
+        {
+            return BadRequest(new { message = "Başlangıç ve bitiş tarihleri gereklidir." });
+        }
+        
+        // Tarihleri sadece tarih kısmına göre karşılaştır (saat bilgisini göz ardı et)
+        var startDateOnly = new DateTime(request.StartDate.Year, request.StartDate.Month, request.StartDate.Day);
+        var endDateOnly = new DateTime(request.EndDate.Year, request.EndDate.Month, request.EndDate.Day);
+        
+        if (startDateOnly >= endDateOnly)
         {
             return BadRequest(new { message = "Bitiş tarihi başlangıç tarihinden büyük olmalıdır." });
+        }
+        
+        if (request.SrcType == null || request.SrcType < 1 || request.SrcType > 5)
+        {
+            return BadRequest(new { message = "Geçerli bir SRC türü seçiniz (1-5)." });
+        }
+        
+        if (request.Capacity <= 0)
+        {
+            return BadRequest(new { message = "Kontenjan en az 1 olmalıdır." });
+        }
+        
+        if (request.PlannedHours != null && request.PlannedHours <= 0)
+        {
+            return BadRequest(new { message = "Planlanan saat en az 1 olmalıdır." });
         }
 
         var branchValue = string.IsNullOrWhiteSpace(request.Branch) ? null : request.Branch.Trim();
@@ -153,6 +338,11 @@ public class CourseGroupsController : ControllerBase
             EndDate = request.EndDate,
             Capacity = request.Capacity,
             Status = "draft",
+            SrcType = request.SrcType ?? 1,
+            IsMixed = request.IsMixed ?? false,
+            MixedTypes = request.MixedTypes,
+            PlannedHours = request.PlannedHours ?? 40,
+            MebApprovalStatus = "draft",
             CreatedAt = DateTime.UtcNow
         };
 
@@ -165,8 +355,12 @@ public class CourseGroupsController : ControllerBase
     [HttpPost("{id}/students")]
     public async Task<ActionResult> AddStudent(int id, [FromBody] AddGroupStudentRequest request)
     {
+        if (request == null)
+        {
+            return BadRequest(new { message = "İstek verisi gereklidir." });
+        }
+
         var group = await _context.MebGroups
-            .Include(g => g.Courses)
             .FirstOrDefaultAsync(g => g.Id == id);
 
         if (group == null)
@@ -180,48 +374,139 @@ public class CourseGroupsController : ControllerBase
             return NotFound(new { message = "Kursiyer bulunamadı." });
         }
 
-        Course? course = null;
-        if (request.CourseId.HasValue)
-        {
-            course = group.Courses.FirstOrDefault(c => c.Id == request.CourseId.Value);
-            if (course == null)
-            {
-                return BadRequest(new { message = "Belirtilen kurs bu gruba ait değil." });
-            }
-        }
-        else
-        {
-            course = group.Courses.FirstOrDefault(c => c.SrcType == request.SrcType);
-        }
-
-        if (course == null)
-        {
-            course = new Course
-            {
-                MebGroupId = group.Id,
-                SrcType = request.SrcType,
-                PlannedHours = request.PlannedHours ?? 40,
-                MebApprovalStatus = "draft",
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _context.Courses.Add(course);
-            await _context.SaveChangesAsync();
-
-            _context.Entry(group).Collection(g => g.Courses).Load();
-        }
-
         var alreadyEnrolled = await _context.Enrollments
-            .AnyAsync(e => e.CourseId == course.Id && e.StudentId == request.StudentId);
+            .AnyAsync(e => e.MebGroupId == group.Id && e.StudentId == request.StudentId);
 
         if (alreadyEnrolled)
         {
-            return Conflict(new { message = "Kursiyer bu kursa zaten kayıtlı." });
+            return Conflict(new { message = "Kursiyer bu sınıfa zaten kayıtlı." });
+        }
+
+        // Aynı dönem içinde aktif kurs kontrolü
+        var activeEnrollmentsInSamePeriod = await _context.Enrollments
+            .Include(e => e.MebGroup)
+            .Where(e => e.StudentId == request.StudentId && 
+                       e.Status == "active" &&
+                       e.MebGroup.StartDate <= group.EndDate &&
+                       e.MebGroup.EndDate >= group.StartDate &&
+                       e.MebGroupId != group.Id)
+            .ToListAsync();
+
+        if (activeEnrollmentsInSamePeriod.Any())
+        {
+            var conflictingEnrollment = activeEnrollmentsInSamePeriod.First();
+            var conflictingGroup = conflictingEnrollment.MebGroup;
+            
+            if (conflictingGroup == null)
+            {
+                return BadRequest(new 
+                { 
+                    message = "Bu kursiyer aynı dönem içinde zaten aktif bir kursa kayıtlı. Aynı dönem içinde sadece bir aktif kursa kayıt olunabilir.",
+                    warning = true
+                });
+            }
+            
+            var conflictingCourseName = MebNamingHelper.BuildCourseName(conflictingGroup.SrcType, conflictingGroup);
+            return BadRequest(new 
+            { 
+                message = $"Bu kursiyer aynı dönem içinde zaten aktif bir kursa kayıtlı: {conflictingCourseName}. Aynı dönem içinde sadece bir aktif kursa kayıt olunabilir.",
+                warning = true,
+                conflictingGroupId = conflictingGroup.Id,
+                conflictingCourseName = conflictingCourseName
+            });
+        }
+
+        // SRC türü uyumluluğu kontrolü - ZORUNLU (ignoreSrcWarning false ise)
+        if (!request.IgnoreSrcWarning)
+        {
+            if (string.IsNullOrWhiteSpace(student.SelectedSrcCourses))
+            {
+                return BadRequest(new 
+                { 
+                    message = $"Bu kursiyer için SRC kurs seçimi yapılmamış. Önce kursiyerin hangi SRC kurslarını almak istediğini belirtmeniz gerekmektedir.",
+                    warning = true,
+                    requiresSrcSelection = true
+                });
+            }
+
+            var selectedSrcTypes = student.SelectedSrcCourses
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => int.TryParse(s.Trim(), out var num) ? num : (int?)null)
+                .Where(n => n.HasValue)
+                .Select(n => n!.Value)
+                .ToList();
+
+            if (selectedSrcTypes.Count == 0)
+            {
+                return BadRequest(new 
+                { 
+                    message = $"Bu kursiyer için geçerli bir SRC kurs seçimi bulunamadı.",
+                    warning = true,
+                    requiresSrcSelection = true,
+                    blockEnrollment = true
+                });
+            }
+
+            // Karma sınıf kontrolü
+            if (group.IsMixed && !string.IsNullOrWhiteSpace(group.MixedTypes))
+            {
+                // MixedTypes formatını parse et (örn: "1,3" veya "SRC1,SRC3")
+                var mixedSrcTypes = group.MixedTypes
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s =>
+                    {
+                        var trimmed = s.Trim();
+                        // "SRC1" formatından "1" çıkar veya direkt sayıyı al
+                        if (trimmed.StartsWith("SRC", StringComparison.OrdinalIgnoreCase))
+                        {
+                            trimmed = trimmed.Substring(3);
+                        }
+                        return int.TryParse(trimmed, out var num) ? num : (int?)null;
+                    })
+                    .Where(n => n.HasValue)
+                    .Select(n => n!.Value)
+                    .ToList();
+
+                if (mixedSrcTypes.Count > 0)
+                {
+                    // Öğrencinin seçtiği SRC türlerinden en az biri karma sınıfta olmalı
+                    var hasMatchingSrc = selectedSrcTypes.Any(st => mixedSrcTypes.Contains(st));
+                    if (!hasMatchingSrc)
+                    {
+                        var mixedSrcNames = string.Join(", ", mixedSrcTypes.Select(t => $"SRC{t}"));
+                        var selectedSrcNames = string.Join(", ", selectedSrcTypes.Select(t => $"SRC{t}"));
+                        return BadRequest(new 
+                        { 
+                            message = $"Bu kursiyer {selectedSrcNames} kursları için kayıt yaptırmış ancak bu karma sınıf {mixedSrcNames} kurslarını içermektedir. Sadece seçili SRC kurslarına kayıt yapılabilir.",
+                            warning = true,
+                            studentSelectedSrcTypes = selectedSrcTypes,
+                            groupMixedSrcTypes = mixedSrcTypes,
+                            blockEnrollment = true
+                        });
+                    }
+                }
+            }
+            else
+            {
+                // Normal sınıf kontrolü (karma değilse)
+                if (!selectedSrcTypes.Contains(group.SrcType))
+                {
+                    var selectedSrcNames = string.Join(", ", selectedSrcTypes.Select(t => $"SRC{t}"));
+                    return BadRequest(new 
+                    { 
+                        message = $"Bu kursiyer {selectedSrcNames} kursları için kayıt yaptırmış ancak bu sınıf SRC{group.SrcType} sınıfıdır. Sadece seçili SRC kurslarına kayıt yapılabilir.",
+                        warning = true,
+                        studentSelectedSrcTypes = selectedSrcTypes,
+                        groupSrcType = group.SrcType,
+                        blockEnrollment = true
+                    });
+                }
+            }
         }
 
         var enrollment = new Enrollment
         {
-            CourseId = course.Id,
+            MebGroupId = group.Id,
             StudentId = request.StudentId,
             Status = string.IsNullOrWhiteSpace(request.Status) ? "active" : request.Status!,
             EnrollmentDate = request.EnrollmentDate ?? DateTime.UtcNow
@@ -230,15 +515,14 @@ public class CourseGroupsController : ControllerBase
         _context.Enrollments.Add(enrollment);
         await _context.SaveChangesAsync();
 
-        return Ok(new { enrollment.Id, enrollment.CourseId, enrollment.StudentId });
+        return Ok(new { enrollment.Id, enrollment.MebGroupId, enrollment.StudentId });
     }
 
     [HttpDelete("{groupId}/students/{enrollmentId}")]
     public async Task<ActionResult> RemoveStudent(int groupId, int enrollmentId)
     {
         var enrollment = await _context.Enrollments
-            .Include(e => e.Course)
-            .FirstOrDefaultAsync(e => e.Id == enrollmentId && e.Course.MebGroupId == groupId);
+            .FirstOrDefaultAsync(e => e.Id == enrollmentId && e.MebGroupId == groupId);
 
         if (enrollment == null)
         {
@@ -268,9 +552,18 @@ public class CourseGroupsController : ControllerBase
         if (request.EndDate.HasValue) group.EndDate = request.EndDate.Value;
         if (request.Capacity.HasValue) group.Capacity = request.Capacity.Value;
         if (request.Status != null) group.Status = request.Status;
+        if (request.SrcType.HasValue) group.SrcType = request.SrcType.Value;
+        if (request.IsMixed.HasValue) group.IsMixed = request.IsMixed.Value;
+        if (request.MixedTypes != null) group.MixedTypes = request.MixedTypes;
+        if (request.PlannedHours.HasValue) group.PlannedHours = request.PlannedHours.Value;
+        if (request.MebApprovalStatus != null) group.MebApprovalStatus = request.MebApprovalStatus;
         group.UpdatedAt = DateTime.UtcNow;
 
-        if (group.StartDate >= group.EndDate)
+        // Tarihleri sadece tarih kısmına göre karşılaştır (saat bilgisini göz ardı et)
+        var startDateOnly = new DateTime(group.StartDate.Year, group.StartDate.Month, group.StartDate.Day);
+        var endDateOnly = new DateTime(group.EndDate.Year, group.EndDate.Month, group.EndDate.Day);
+        
+        if (startDateOnly >= endDateOnly)
         {
             return BadRequest(new { message = "Bitiş tarihi başlangıç tarihinden büyük olmalıdır." });
         }
@@ -284,7 +577,10 @@ public class CourseGroupsController : ControllerBase
     public async Task<ActionResult> Delete(int id, [FromQuery] bool soft = true)
     {
         var group = await _context.MebGroups
-            .Include(g => g.Courses)
+            .Include(g => g.Enrollments)
+            .Include(g => g.ScheduleSlots)
+            .Include(g => g.Exams)
+            .Include(g => g.MebbisTransferJobs)
             .FirstOrDefaultAsync(g => g.Id == id);
 
         if (group == null)
@@ -300,12 +596,39 @@ public class CourseGroupsController : ControllerBase
             return Ok(new { message = "MEB grubu pasif hale getirildi." });
         }
 
-        foreach (var course in group.Courses.ToList())
+        // Hard delete - cleanup related data
+        foreach (var enrollment in group.Enrollments.ToList())
         {
-            await CourseDeletionHelper.CleanupCourseAsync(_context, course);
-            _context.Courses.Remove(course);
+            await _context.Entry(enrollment).Collection(e => e.MebbisTransferItems).LoadAsync();
+            var transferItems = enrollment.MebbisTransferItems.ToList();
+            if (transferItems.Any())
+            {
+                _context.MebbisTransferItems.RemoveRange(transferItems);
+            }
+            
+            var relatedPayments = await _context.Payments
+                .Where(p => p.EnrollmentId.HasValue && p.EnrollmentId.Value == enrollment.Id)
+                .ToListAsync();
+            foreach (var payment in relatedPayments)
+            {
+                payment.EnrollmentId = null;
+            }
         }
 
+        foreach (var exam in group.Exams.ToList())
+        {
+            await _context.Entry(exam).Collection(e => e.ExamResults).LoadAsync();
+        }
+
+        foreach (var job in group.MebbisTransferJobs.ToList())
+        {
+            await _context.Entry(job).Collection(j => j.TransferItems).LoadAsync();
+        }
+
+        _context.Enrollments.RemoveRange(group.Enrollments);
+        _context.ScheduleSlots.RemoveRange(group.ScheduleSlots);
+        _context.Exams.RemoveRange(group.Exams);
+        _context.MebbisTransferJobs.RemoveRange(group.MebbisTransferJobs);
         _context.MebGroups.Remove(group);
         await _context.SaveChangesAsync();
 
@@ -323,6 +646,10 @@ public class CreateCourseGroupRequest
     public DateTime StartDate { get; set; }
     public DateTime EndDate { get; set; }
     public int Capacity { get; set; }
+    public int? SrcType { get; set; }
+    public bool? IsMixed { get; set; }
+    public string? MixedTypes { get; set; }
+    public int? PlannedHours { get; set; }
 }
 
 public class UpdateCourseGroupRequest
@@ -335,15 +662,17 @@ public class UpdateCourseGroupRequest
     public DateTime? EndDate { get; set; }
     public int? Capacity { get; set; }
     public string? Status { get; set; }
+    public int? SrcType { get; set; }
+    public bool? IsMixed { get; set; }
+    public string? MixedTypes { get; set; }
+    public int? PlannedHours { get; set; }
+    public string? MebApprovalStatus { get; set; }
 }
 
 public class AddGroupStudentRequest
 {
     public int StudentId { get; set; }
-    public int SrcType { get; set; }
-    public int? CourseId { get; set; }
-    public int? PlannedHours { get; set; }
     public string? Status { get; set; }
     public DateTime? EnrollmentDate { get; set; }
+    public bool IgnoreSrcWarning { get; set; } = false; // SRC uyarısını görmezden gel
 }
-

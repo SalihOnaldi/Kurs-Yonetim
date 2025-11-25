@@ -21,7 +21,6 @@ public class SrcDbContext : DbContext
     public DbSet<Student> Students => Set<Student>();
     public DbSet<StudentDocument> StudentDocuments => Set<StudentDocument>();
     public DbSet<MebGroup> MebGroups => Set<MebGroup>();
-    public DbSet<Course> Courses => Set<Course>();
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
     public DbSet<ScheduleSlot> ScheduleSlots => Set<ScheduleSlot>();
     public DbSet<Attendance> Attendances => Set<Attendance>();
@@ -37,6 +36,9 @@ public class SrcDbContext : DbContext
     public DbSet<LicenseReminderLog> LicenseReminderLogs => Set<LicenseReminderLog>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<TenantApiToken> TenantApiTokens => Set<TenantApiToken>();
+    public DbSet<Certificate> Certificates => Set<Certificate>();
+    public DbSet<SrcCourseTemplate> SrcCourseTemplates => Set<SrcCourseTemplate>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     public override int SaveChanges()
     {
@@ -108,15 +110,15 @@ public class SrcDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<Enrollment>()
-            .HasOne(e => e.Course)
-            .WithMany(c => c.Enrollments)
-            .HasForeignKey(e => e.CourseId)
+            .HasOne(e => e.MebGroup)
+            .WithMany(g => g.Enrollments)
+            .HasForeignKey(e => e.MebGroupId)
             .OnDelete(DeleteBehavior.Restrict);
 
         modelBuilder.Entity<ScheduleSlot>()
-            .HasOne(ss => ss.Course)
-            .WithMany(c => c.ScheduleSlots)
-            .HasForeignKey(ss => ss.CourseId)
+            .HasOne(ss => ss.MebGroup)
+            .WithMany(g => g.ScheduleSlots)
+            .HasForeignKey(ss => ss.MebGroupId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<Attendance>()
@@ -141,6 +143,30 @@ public class SrcDbContext : DbContext
             .HasOne(er => er.Exam)
             .WithMany(e => e.ExamResults)
             .HasForeignKey(er => er.ExamId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Payment>()
+            .HasOne(p => p.Student)
+            .WithMany(s => s.Payments)
+            .HasForeignKey(p => p.StudentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<Payment>()
+            .HasOne(p => p.Enrollment)
+            .WithMany()
+            .HasForeignKey(p => p.EnrollmentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        modelBuilder.Entity<Exam>()
+            .HasOne(e => e.MebGroup)
+            .WithMany(g => g.Exams)
+            .HasForeignKey(e => e.MebGroupId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<MebbisTransferJob>()
+            .HasOne(j => j.MebGroup)
+            .WithMany(g => g.MebbisTransferJobs)
+            .HasForeignKey(j => j.MebGroupId)
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<MebbisTransferItem>()
@@ -169,6 +195,10 @@ public class SrcDbContext : DbContext
         modelBuilder.Entity<Student>()
             .Property(s => s.FaceProfileId)
             .HasMaxLength(200);
+
+        modelBuilder.Entity<Student>()
+            .Property(s => s.SelectedSrcCourses)
+            .HasMaxLength(50); // "1,2,3,4" formatında, max 50 karakter yeterli
 
         modelBuilder.Entity<MebGroup>()
             .HasIndex(m => new { m.TenantId, m.Year, m.Month, m.GroupNo, m.Branch })
@@ -275,17 +305,11 @@ public class SrcDbContext : DbContext
         modelBuilder.Entity<Student>()
             .HasIndex(x => new { x.TenantId, x.CreatedAt });
 
-        modelBuilder.Entity<Course>()
-            .HasIndex(x => new { x.TenantId, x.MebGroupId });
-
-        modelBuilder.Entity<Course>()
+        modelBuilder.Entity<MebGroup>()
             .HasIndex(x => new { x.TenantId, x.MebApprovalStatus });
 
-        modelBuilder.Entity<Course>()
-            .HasIndex(x => new { x.TenantId, x.CreatedAt });
-
         modelBuilder.Entity<Enrollment>()
-            .HasIndex(x => new { x.TenantId, x.CourseId });
+            .HasIndex(x => new { x.TenantId, x.MebGroupId });
 
         modelBuilder.Entity<Attendance>()
             .HasIndex(x => new { x.TenantId, x.ScheduleSlotId, x.CreatedAt });
@@ -314,6 +338,56 @@ public class SrcDbContext : DbContext
 
         modelBuilder.Entity<TenantApiToken>()
             .HasIndex(x => new { x.TenantId, x.IsRevoked, x.ExpiresAt });
+
+        // Certificate ilişkileri
+        modelBuilder.Entity<Certificate>()
+            .HasOne(c => c.Student)
+            .WithMany(s => s.Certificates)
+            .HasForeignKey(c => c.StudentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Certificate>()
+            .HasOne(c => c.MebGroup)
+            .WithMany(g => g.Certificates)
+            .HasForeignKey(c => c.MebGroupId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Certificate>()
+            .HasOne(c => c.WrittenExam)
+            .WithMany()
+            .HasForeignKey(c => c.WrittenExamId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Certificate>()
+            .HasOne(c => c.PracticalExam)
+            .WithMany()
+            .HasForeignKey(c => c.PracticalExamId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        modelBuilder.Entity<Certificate>()
+            .HasIndex(x => new { x.TenantId, x.CertificateNumber })
+            .IsUnique();
+
+        modelBuilder.Entity<Certificate>()
+            .HasIndex(x => new { x.TenantId, x.StudentId });
+
+        modelBuilder.Entity<Certificate>()
+            .HasIndex(x => new { x.TenantId, x.MebGroupId });
+
+        // SrcCourseTemplate index'leri
+        modelBuilder.Entity<SrcCourseTemplate>()
+            .HasIndex(x => new { x.TenantId, x.SrcType, x.SubjectCode })
+            .IsUnique();
+
+        modelBuilder.Entity<SrcCourseTemplate>()
+            .HasIndex(x => new { x.TenantId, x.SrcType, x.Order });
+
+        // PasswordResetToken index'leri
+        modelBuilder.Entity<PasswordResetToken>()
+            .HasIndex(x => new { x.Username, x.Token, x.IsUsed });
+
+        modelBuilder.Entity<PasswordResetToken>()
+            .HasIndex(x => x.ExpiresAt);
     }
 }
 

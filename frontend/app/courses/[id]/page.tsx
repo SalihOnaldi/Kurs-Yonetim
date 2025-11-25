@@ -30,17 +30,6 @@ interface CourseDetailResponse {
     capacity: number;
     status: string;
     name: string;
-    courses: {
-      id: number;
-      srcType: number;
-      srcTypeName: string;
-      plannedHours: number;
-      isMixed: boolean;
-      mixedTypes?: string | null;
-      mebApprovalStatus: string;
-      enrollmentCount: number;
-      createdAt: string;
-    }[];
   };
   summary: {
     totalEnrollments: number;
@@ -164,7 +153,7 @@ const parseLocalDateTime = (date: string, time: string) => new Date(buildLocalDa
 export default function CourseDetailPage() {
   const router = useRouter();
   const params = useParams();
-  const courseId = Number(params.id);
+  const mebGroupId = Number(params.id);
 
   const [authorized, setAuthorized] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -241,7 +230,7 @@ export default function CourseDetailPage() {
   const filteredAvailableStudents = useMemo(() => {
     const term = studentQuery.trim().toLowerCase();
     const existingIds =
-      course?.students.reduce<Set<number>>((set, enrollment) => {
+      course?.enrollments?.reduce<Set<number>>((set, enrollment) => {
         set.add(enrollment.student.id);
         return set;
       }, new Set<number>()) ?? new Set<number>();
@@ -263,7 +252,7 @@ export default function CourseDetailPage() {
   }, [studentQuery, availableStudents, course]);
 
   useEffect(() => {
-    if (!courseId || Number.isNaN(courseId)) {
+    if (!mebGroupId || Number.isNaN(mebGroupId)) {
       router.push("/courses");
       return;
     }
@@ -279,7 +268,7 @@ export default function CourseDetailPage() {
       .then(() => setAuthorized(true))
       .catch(() => router.push("/login"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId]);
+  }, [mebGroupId]);
 
   useEffect(() => {
     if (!authorized) return;
@@ -291,14 +280,14 @@ export default function CourseDetailPage() {
   useEffect(() => {
     if (!course) return;
     setGroupForm({
-      year: course.group.year,
-      month: course.group.month,
-      groupNo: course.group.groupNo,
-      branch: course.group.branch || "",
-      startDate: toInputDate(course.group.startDate),
-      endDate: toInputDate(course.group.endDate),
-      capacity: course.group.capacity,
-      status: course.group.status,
+      year: course.year,
+      month: course.month,
+      groupNo: course.groupNo,
+      branch: course.branch || "",
+      startDate: toInputDate(course.startDate),
+      endDate: toInputDate(course.endDate),
+      capacity: course.capacity,
+      status: course.status,
     });
   }, [course]);
 
@@ -306,7 +295,7 @@ export default function CourseDetailPage() {
     try {
       setLoading(true);
       setError("");
-      const response = await api.get<CourseDetailResponse>(`/courses/${courseId}`);
+      const response = await api.get<CourseDetailResponse>(`/courses/groups/${mebGroupId}/detail`);
         setCourse(response.data);
 
       if (typeof window !== "undefined" && window.location.hash) {
@@ -475,7 +464,7 @@ const openCreateSlotModalForDate = (date: Date) => {
 
     try {
       setGroupFormSubmitting(true);
-      await api.put(`/courses/groups/${course.group.id}`, {
+      await api.put(`/courses/groups/${course.id}`, {
         year: groupForm.year,
         month: groupForm.month,
         groupNo: groupForm.groupNo,
@@ -551,16 +540,51 @@ const openCreateSlotModalForDate = (date: Date) => {
 
       for (const student of selectedStudents) {
         try {
-          await api.post(`/courses/groups/${course.group.id}/students`, {
+          const response = await api.post(`/courses/groups/${course.id}/students`, {
             studentId: student.id,
-            courseId: course.id,
             status: assignStatus,
           });
           successCount += 1;
-        } catch (err) {
+        } catch (err: any) {
           console.error("Assign student error:", err);
-          failureCount += 1;
-          failed.push(student);
+          
+          // SRC türü uyumsuzluğu kontrolü
+          if (err.response?.data?.warning === true && err.response?.data?.message) {
+            // blockEnrollment true ise direkt engelle, onay isteme
+            if (err.response?.data?.blockEnrollment === true) {
+              const errorMessage = err.response.data.message;
+              alert(`❌ ${errorMessage}`);
+              failureCount += 1;
+              failed.push(student);
+            } else {
+              // Eski davranış: onay iste (artık kullanılmayacak ama geriye dönük uyumluluk için)
+              const confirmMessage = err.response.data.message + "\n\nDevam etmek istiyor musunuz?";
+              if (confirm(confirmMessage)) {
+                // Kullanıcı onayladı, tekrar dene (bu sefer warning'i ignore et)
+                try {
+                  await api.post(`/courses/groups/${course.group.id}/students`, {
+                    studentId: student.id,
+                    status: assignStatus,
+                    ignoreSrcWarning: true, // Backend'e ignore flag'i gönder
+                  });
+                  successCount += 1;
+                  continue;
+                } catch (retryErr: any) {
+                  console.error("Retry assign student error:", retryErr);
+                  const retryMessage = retryErr.response?.data?.message || retryErr.message || "Kursiyer eklenirken hata oluştu.";
+                  failureCount += 1;
+                  failed.push(student);
+                }
+              } else {
+                // Kullanıcı iptal etti
+                failureCount += 1;
+                failed.push(student);
+              }
+            }
+          } else {
+            failureCount += 1;
+            failed.push(student);
+          }
         }
       }
 
@@ -596,7 +620,7 @@ const openCreateSlotModalForDate = (date: Date) => {
     }
 
     try {
-      await api.delete(`/courses/${course.id}/students/${studentId}`);
+      await api.delete(`/courses/groups/${course.id}/students/${studentId}`);
       await loadCourse();
     } catch (err: any) {
       const message =
@@ -651,7 +675,7 @@ const openCreateSlotModalForDate = (date: Date) => {
       }
 
       const payload = {
-        courseId,
+        mebGroupId: mebGroupId,
         instructorId: slotForm.instructorId ? Number(slotForm.instructorId) : undefined,
         classroomName: slotForm.classroomName || undefined,
         subject: slotForm.subject || undefined,
@@ -773,7 +797,7 @@ const openCreateSlotModalForDate = (date: Date) => {
 
         try {
           await api.post("/schedule", {
-            courseId,
+            mebGroupId: mebGroupId,
             instructorId: bulkForm.instructorId ? Number(bulkForm.instructorId) : undefined,
             classroomName: bulkForm.classroomName || undefined,
             subject: bulkForm.subject || undefined,
@@ -932,7 +956,7 @@ const openCreateSlotModalForDate = (date: Date) => {
     try {
       setPendingTransfer(true);
       setTransferError("");
-      await api.post(`/mebbis-transfer/${courseId}?mode=${mode}`);
+      await api.post(`/mebbis-transfer/${mebGroupId}?mode=${mode}`);
       await loadCourse();
       alert("MEBBİS aktarımı başlatıldı.");
     } catch (err: any) {
@@ -955,7 +979,7 @@ const openCreateSlotModalForDate = (date: Date) => {
 
   const handleTabChange = (tab: TabKey) => {
     if (tab === "schedule") {
-      router.push(`/courses/${courseId}/scheduler`);
+      router.push(`/courses/${mebGroupId}/scheduler`);
       return;
     }
     setActiveTab(tab);
@@ -968,7 +992,7 @@ const openCreateSlotModalForDate = (date: Date) => {
 
   useEffect(() => {
     if (activeTab === "schedule") {
-      router.push(`/courses/${courseId}/scheduler`);
+      router.push(`/courses/${mebGroupId}/scheduler`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -978,15 +1002,11 @@ const openCreateSlotModalForDate = (date: Date) => {
     return `${Math.round(rate * 100)}%`;
   };
 
-  const averageAttendance =
-    course?.students && course.students.length
-      ? course.students.reduce((sum, s) => sum + (s.attendanceRate ?? 0), 0) /
-        course.students.length
-      : 0;
+  const averageAttendance = 0; // Attendance rate bilgisi backend'de hesaplanmıyor, şimdilik 0
 
   const totalExamParticipants = useMemo(() => {
     if (!course?.exams) return 0;
-    return course.exams.reduce((sum, exam) => sum + exam.participantCount, 0);
+    return course.exams.reduce((sum, exam) => sum + (exam.participantCount || 0), 0);
   }, [course?.exams]);
 
   if (loading) {
@@ -1052,28 +1072,28 @@ const openCreateSlotModalForDate = (date: Date) => {
           <section className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <SummaryCard
               title="Toplam Kursiyer"
-              value={course.summary.totalEnrollments}
-              subtitle={`Aktif: ${course.summary.activeEnrollments} • Tamamlanan: ${course.summary.completedEnrollments}`}
+              value={course.summary?.totalEnrollments || 0}
+              subtitle={`Aktif: ${course.summary?.activeEnrollments || 0} • Tamamlanan: ${course.summary?.completedEnrollments || 0}`}
               gradient="from-green-500 to-green-600"
               icon="👥"
             />
             <SummaryCard
               title="Ders Saatleri"
               value={`${course.plannedHours} saat`}
-              subtitle={`Bugün/İleri: ${course.summary.upcomingScheduleCount}`}
+              subtitle={`Bugün/İleri: ${course.summary?.upcomingScheduleCount || 0}`}
               gradient="from-emerald-500 to-emerald-600"
               icon="📅"
             />
             <SummaryCard
               title="Yaklaşan Sınav"
-              value={`${course.summary.upcomingExamCount}`}
+              value={`${course.summary?.upcomingExamCount || 0}`}
               subtitle={`Toplam katılımcı: ${totalExamParticipants}`}
               gradient="from-teal-500 to-teal-600"
               icon="📝"
             />
             <SummaryCard
               title="Son MEB Aktarımı"
-              value={course.summary.lastTransferStatus ? course.summary.lastTransferStatus : "Yok"}
+              value={course.summary?.lastTransferStatus || "Yok"}
               subtitle="Son aktarımın durumu"
               gradient="from-blue-500 to-cyan-600"
               icon="📤"
@@ -1224,33 +1244,6 @@ const openCreateSlotModalForDate = (date: Date) => {
                       </dd>
                     </div>
                   </dl>
-                  {course.group.courses && course.group.courses.length > 0 && (
-                    <div className="mt-4">
-                      <h4 className="text-sm font-semibold text-emerald-700 mb-2">Bağlı Kurslar</h4>
-                      <ul className="space-y-2 text-sm text-gray-700">
-                        {course.group.courses.map((item) => (
-                          <li key={item.id} className="flex items-center justify-between gap-2">
-                            <div>
-                              <div className="font-medium text-gray-800">
-                                {item.srcTypeName} • {item.enrollmentCount} kursiyer
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                Oluşturma: {formatDate(item.createdAt)} • Durum: {item.mebApprovalStatus}
-                              </div>
-                            </div>
-                            {item.id !== course.id && (
-                              <button
-                                onClick={() => router.push(`/courses/${item.id}`)}
-                                className="text-xs text-indigo-600 hover:text-indigo-800 px-3 py-1 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
-                              >
-                                Aç
-                              </button>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -1284,7 +1277,7 @@ const openCreateSlotModalForDate = (date: Date) => {
                       Haftalık Planlama
                     </button>
                     <button
-                      onClick={() => router.push(`/courses/${course.id}/scheduler`)}
+                      onClick={() => router.push(`/courses/${mebGroupId}/scheduler`)}
                       className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 text-sm"
                     >
                       Planlayıcıyı Aç →
@@ -1350,7 +1343,7 @@ const openCreateSlotModalForDate = (date: Date) => {
                   </p>
                 </div>
 
-                {course.schedule.length === 0 ? (
+                {(!course.schedule || course.schedule.length === 0) ? (
                   <EmptyState message="Bu kurs için ders programı oluşturulmamış." />
                 ) : (
                   <div className="overflow-x-auto border border-gray-200 rounded-xl">
@@ -1468,7 +1461,14 @@ const openCreateSlotModalForDate = (date: Date) => {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-200">
-                        {course.students.map((student) => (
+                        {(course.students || course.enrollments?.map(e => ({
+                          id: e.id,
+                          student: e.student,
+                          status: e.status,
+                          enrollmentDate: e.enrollmentDate,
+                          attendanceRate: null,
+                          examAttempts: 0
+                        })) || []).map((student) => (
                           <tr key={student.id}>
                             <td className="px-6 py-4">
                               <div className="text-sm font-semibold text-indigo-700">
@@ -1534,7 +1534,7 @@ const openCreateSlotModalForDate = (date: Date) => {
                     Sınav listesine git →
                   </button>
                 </div>
-                {course.exams.length === 0 ? (
+                {(!course.exams || course.exams.length === 0) ? (
                   <EmptyState message="Bu kursa ait sınav bulunmuyor." />
                 ) : (
                   <div className="overflow-x-auto border border-gray-200 rounded-xl">
@@ -1573,7 +1573,7 @@ const openCreateSlotModalForDate = (date: Date) => {
                               )}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-700">
-                              {exam.participantCount}
+                              {exam.participantCount || exam.ParticipantCount || 0}
                             </td>
                             <td className="px-6 py-4 text-sm text-gray-700">
                               <span className="text-green-600 mr-2">

@@ -14,7 +14,7 @@ public class StudentDetailDto
 public class StudentEnrollmentSummaryDto
 {
     public int EnrollmentId { get; set; }
-    public int CourseId { get; set; }
+    public int MebGroupId { get; set; }
     public string CourseName { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public DateTime EnrollmentDate { get; set; }
@@ -51,7 +51,7 @@ public class MebGroupSummaryDto
 
 public class EnrollmentCourseSummaryDto
 {
-    public int CourseId { get; set; }
+    public int MebGroupId { get; set; }
     public string CourseName { get; set; } = string.Empty;
     public MebGroupSummaryDto Group { get; set; } = new();
     public int SrcType { get; set; }

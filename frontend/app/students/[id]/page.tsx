@@ -45,7 +45,7 @@ interface StudentDocument {
 
 interface StudentEnrollment {
   enrollmentId: number;
-  courseId: number;
+  mebGroupId: number;
   courseName: string;
   status: string;
   enrollmentDate: string;
@@ -74,7 +74,7 @@ interface StudentPayment {
   description?: string | null;
   enrollmentId?: number | null;
   enrollment?: {
-    courseId: number;
+    mebGroupId: number;
     courseName: string;
     group: {
       year: number;

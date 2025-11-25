@@ -68,7 +68,7 @@ export default function AttendancePage() {
       setListError("");
 
       const params = new URLSearchParams();
-      if (courseFilter.trim()) params.append("courseId", courseFilter.trim());
+      if (courseFilter.trim()) params.append("mebGroupId", courseFilter.trim());
       if (studentFilter.trim()) params.append("studentId", studentFilter.trim());
       if (dateFilter) {
         const startDate = new Date(dateFilter);

@@ -30,7 +30,9 @@ interface CreateStudentForm {
   educationLevel?: string;
   licenseType?: string;
   licenseIssueDate?: string;
+  selectedSrcCourses: number[]; // Seçilen SRC kursları (1, 2, 3, 4)
 }
+
 
 const initialForm: CreateStudentForm = {
   tcKimlikNo: "",
@@ -41,6 +43,7 @@ const initialForm: CreateStudentForm = {
   address: "",
   educationLevel: "",
   licenseType: "",
+  selectedSrcCourses: [],
 };
 
 export default function StudentsPage() {
@@ -180,6 +183,7 @@ export default function StudentsPage() {
       address: "",
       educationLevel: "",
       licenseType: "",
+      selectedSrcCourses: [],
     });
     setEditingStudentId(student.id);
     setFormError("");
@@ -221,10 +225,18 @@ export default function StudentsPage() {
         }
       }
 
+      let studentId: number;
       if (editingStudentId) {
         await api.put(`/students/${editingStudentId}`, payload);
+        studentId = editingStudentId;
       } else {
-        await api.post("/students", payload);
+        const response = await api.post("/students", payload);
+        studentId = response.data.id;
+      }
+
+      // SRC kurslarını backend'e gönder
+      if (formData.selectedSrcCourses.length > 0) {
+        payload.selectedSrcCourses = formData.selectedSrcCourses;
       }
 
       handleModalClose();
@@ -713,6 +725,53 @@ export default function StudentsPage() {
                     className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
+              </div>
+
+              {/* SRC Kurs Seçimi ve Kurs Bazlı Belge Takibi */}
+              <div className="border-t border-gray-200 pt-4 mt-4">
+                <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  Alınacak SRC Kursları <span className="text-red-500">*</span>
+                  <span className="text-xs font-normal text-gray-500 ml-2">
+                    (Öğrencinin alacağı kursları seçin)
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  {[1, 2, 3, 4].map((srcType) => (
+                    <label
+                      key={srcType}
+                      className={`flex items-center p-3 border-2 rounded-lg cursor-pointer transition-all ${
+                        formData.selectedSrcCourses.includes(srcType)
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.selectedSrcCourses.includes(srcType)}
+                        onChange={(e) => {
+                          const current = formData.selectedSrcCourses;
+                          if (e.target.checked) {
+                            setFormData({
+                              ...formData,
+                              selectedSrcCourses: [...current, srcType],
+                            });
+                          } else {
+                            setFormData({
+                              ...formData,
+                              selectedSrcCourses: current.filter((c) => c !== srcType),
+                            });
+                          }
+                        }}
+                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2"
+                      />
+                      <span className="text-sm font-medium text-gray-700">SRC{srcType}</span>
+                    </label>
+                  ))}
+                </div>
+
+                {formData.selectedSrcCourses.length === 0 && (
+                  <p className="mt-2 text-sm text-red-600">En az bir SRC kursu seçmelisiniz.</p>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">

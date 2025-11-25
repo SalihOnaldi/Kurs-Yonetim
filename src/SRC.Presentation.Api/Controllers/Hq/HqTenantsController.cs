@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Mail;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
@@ -464,6 +465,24 @@ public class HqTenantsController : ControllerBase
             throw new InvalidOperationException("İletişim e-postası gereklidir.");
         }
 
+        // Email format validation
+        try
+        {
+            var emailAddress = new MailAddress(request.ContactEmail);
+            if (emailAddress.Address != request.ContactEmail.Trim())
+            {
+                throw new InvalidOperationException("Geçersiz e-posta formatı.");
+            }
+        }
+        catch (FormatException)
+        {
+            throw new InvalidOperationException("Geçersiz e-posta formatı.");
+        }
+        catch (ArgumentException)
+        {
+            throw new InvalidOperationException("Geçersiz e-posta formatı.");
+        }
+
         var existingTenant = await _context.Tenants
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(t => t.Username == request.Username, cancellationToken);
@@ -497,6 +516,28 @@ public class HqTenantsController : ControllerBase
         };
 
         _context.Tenants.Add(tenant);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        // Tenant için otomatik BranchAdmin kullanıcısı oluştur
+        var tenantUser = new SRC.Domain.Entities.User
+        {
+            Username = $"tenant_{tenant.Id}",
+            PasswordHash = tenant.PasswordHash,
+            Email = tenant.ContactEmail ?? $"{tenant.Id}@tenant.local",
+            FullName = tenant.Name,
+            Role = "BranchAdmin",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        _context.Users.Add(tenantUser);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        // UserTenant ilişkisi
+        _context.UserTenants.Add(new SRC.Domain.Entities.UserTenant
+        {
+            UserId = tenantUser.Id,
+            TenantId = tenant.Id
+        });
         await _context.SaveChangesAsync(cancellationToken);
 
         return tenant;
@@ -598,6 +639,322 @@ public class HqTenantsController : ControllerBase
         return value;
     }
 
+    [HttpPost("delete-with-data")]
+    public async Task<ActionResult<BulkLicenseActionResult>> DeleteTenantsWithDataAsync([FromBody] BulkLicenseActionRequest request, CancellationToken cancellationToken)
+    {
+        var role = User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+        if (!_permissionService.CanManage(role))
+        {
+            return Forbid("Bu işlem için yetkiniz bulunmuyor.");
+        }
+
+        if (request == null || request.TenantIds == null || request.TenantIds.Count == 0)
+        {
+            return BadRequest(new { message = "En az bir lisans seçilmelidir." });
+        }
+
+        var tenants = await _context.Tenants
+            .IgnoreQueryFilters()
+            .Where(t => request.TenantIds.Contains(t.Id))
+            .ToListAsync(cancellationToken);
+
+        if (tenants.Count == 0)
+        {
+            return NotFound(new { message = "Seçilen tenant'lar bulunamadı." });
+        }
+
+        var result = new BulkLicenseActionResult();
+
+        foreach (var tenant in tenants)
+        {
+            try
+            {
+                // Tenant'a ait tüm verileri sil
+                await DeleteTenantDataAsync(tenant.Id, cancellationToken);
+
+                // Tenant'ı sil
+                _context.Tenants.Remove(tenant);
+                result.Processed++;
+            }
+            catch (Exception ex)
+            {
+                result.Skipped++;
+                result.Errors.Add($"{tenant.Name}: {ex.Message}");
+            }
+        }
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        var metadata = new
+        {
+            action = "delete_with_data",
+            requestCount = request.TenantIds.Count,
+            result.Processed,
+            result.Skipped
+        };
+
+        await _auditLogger.LogAsync("license_delete_with_data", "tenant", metadata: metadata, cancellationToken: cancellationToken);
+        await _eventPublisher.PublishAsync("license_delete_with_data", metadata, cancellationToken);
+
+        return Ok(result);
+    }
+
+    private async Task DeleteTenantDataAsync(string tenantId, CancellationToken cancellationToken)
+    {
+        // Foreign key constraint'leri nedeniyle doğru sırayla silme işlemi yapılmalı
+
+        // 1. Transfer Items
+        var transferItems = await _context.MebbisTransferItems
+            .IgnoreQueryFilters()
+            .Where(ti => ti.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (transferItems.Any())
+        {
+            _context.MebbisTransferItems.RemoveRange(transferItems);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 2. Transfer Jobs
+        var transferJobs = await _context.MebbisTransferJobs
+            .IgnoreQueryFilters()
+            .Where(tj => tj.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (transferJobs.Any())
+        {
+            _context.MebbisTransferJobs.RemoveRange(transferJobs);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 3. Exam Results
+        var examResults = await _context.ExamResults
+            .IgnoreQueryFilters()
+            .Where(er => er.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (examResults.Any())
+        {
+            _context.ExamResults.RemoveRange(examResults);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 4. Exams
+        var exams = await _context.Exams
+            .IgnoreQueryFilters()
+            .Where(e => e.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (exams.Any())
+        {
+            _context.Exams.RemoveRange(exams);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 5. Attendances
+        var attendances = await _context.Attendances
+            .IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (attendances.Any())
+        {
+            _context.Attendances.RemoveRange(attendances);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 6. Schedule Slots
+        var scheduleSlots = await _context.ScheduleSlots
+            .IgnoreQueryFilters()
+            .Where(ss => ss.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (scheduleSlots.Any())
+        {
+            _context.ScheduleSlots.RemoveRange(scheduleSlots);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 7. Payments
+        var payments = await _context.Payments
+            .IgnoreQueryFilters()
+            .Where(p => p.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (payments.Any())
+        {
+            _context.Payments.RemoveRange(payments);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 8. Enrollments
+        var enrollments = await _context.Enrollments
+            .IgnoreQueryFilters()
+            .Where(e => e.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (enrollments.Any())
+        {
+            _context.Enrollments.RemoveRange(enrollments);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // Courses artık MebGroup içinde, bu adım atlandı
+
+        // 10. MebGroups
+        var mebGroups = await _context.MebGroups
+            .IgnoreQueryFilters()
+            .Where(mg => mg.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (mebGroups.Any())
+        {
+            _context.MebGroups.RemoveRange(mebGroups);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 11. Reminders
+        var reminders = await _context.Reminders
+            .IgnoreQueryFilters()
+            .Where(r => r.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (reminders.Any())
+        {
+            _context.Reminders.RemoveRange(reminders);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 12. Student Documents
+        var studentDocuments = await _context.StudentDocuments
+            .IgnoreQueryFilters()
+            .Where(sd => sd.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (studentDocuments.Any())
+        {
+            _context.StudentDocuments.RemoveRange(studentDocuments);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 13. Students
+        var students = await _context.Students
+            .IgnoreQueryFilters()
+            .Where(s => s.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (students.Any())
+        {
+            _context.Students.RemoveRange(students);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 14. Account Transactions
+        var accountTransactions = await _context.AccountTransactions
+            .IgnoreQueryFilters()
+            .Where(at => at.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (accountTransactions.Any())
+        {
+            _context.AccountTransactions.RemoveRange(accountTransactions);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 15. AI Queries
+        var aiQueries = await _context.AiQueries
+            .IgnoreQueryFilters()
+            .Where(aq => aq.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (aiQueries.Any())
+        {
+            _context.AiQueries.RemoveRange(aiQueries);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 16. Mebbis Sync Logs
+        var mebbisSyncLogs = await _context.MebbisSyncLogs
+            .IgnoreQueryFilters()
+            .Where(msl => msl.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (mebbisSyncLogs.Any())
+        {
+            _context.MebbisSyncLogs.RemoveRange(mebbisSyncLogs);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 17. License Reminder Logs
+        var licenseReminderLogs = await _context.LicenseReminderLogs
+            .IgnoreQueryFilters()
+            .Where(lrl => lrl.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (licenseReminderLogs.Any())
+        {
+            _context.LicenseReminderLogs.RemoveRange(licenseReminderLogs);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 18. Tenant API Tokens
+        var tenantApiTokens = await _context.TenantApiTokens
+            .IgnoreQueryFilters()
+            .Where(tat => tat.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (tenantApiTokens.Any())
+        {
+            _context.TenantApiTokens.RemoveRange(tenantApiTokens);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        // 19. User Tenants (Junction table)
+        var userTenants = await _context.UserTenants
+            .IgnoreQueryFilters()
+            .Where(ut => ut.TenantId == tenantId)
+            .ToListAsync(cancellationToken);
+        if (userTenants.Any())
+        {
+            _context.UserTenants.RemoveRange(userTenants);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    [HttpPost("{tenantId}/reset-password")]
+    public async Task<ActionResult> ResetTenantPassword(string tenantId, [FromBody] ResetTenantPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var role = User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+        if (!_permissionService.CanManage(role))
+        {
+            return Forbid("Bu işlem için yetkiniz bulunmuyor.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            return BadRequest(new { message = "Yeni şifre gereklidir." });
+        }
+
+        if (request.NewPassword.Length < 6)
+        {
+            return BadRequest(new { message = "Şifre en az 6 karakter olmalıdır." });
+        }
+
+        var tenant = await _context.Tenants
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.Id == tenantId, cancellationToken);
+
+        if (tenant == null)
+        {
+            return NotFound(new { message = "Lisans bulunamadı." });
+        }
+
+        // Tenant şifresini güncelle
+        tenant.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        // Tenant kullanıcısının şifresini de güncelle
+        var tenantUser = await _context.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Username == $"tenant_{tenant.Id}" && u.Role == "BranchAdmin", cancellationToken);
+
+        if (tenantUser != null)
+        {
+            tenantUser.PasswordHash = tenant.PasswordHash;
+            tenantUser.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        var metadata = new { tenantId, tenantName = tenant.Name };
+        await _auditLogger.LogAsync("tenant_password_reset", "tenant", tenantId, tenantId, metadata, cancellationToken);
+        await _eventPublisher.PublishAsync("tenant_password_reset", metadata, cancellationToken);
+
+        return Ok(new { message = "Şifre başarıyla sıfırlandı." });
+    }
+
     private async Task<bool> HasDependenciesAsync(string tenantId, CancellationToken cancellationToken)
     {
         var studentExists = await _context.Students.IgnoreQueryFilters()
@@ -607,15 +964,14 @@ public class HqTenantsController : ControllerBase
             return true;
         }
 
-        var courseExists = await _context.Courses.IgnoreQueryFilters()
-            .AnyAsync(c => c.TenantId == tenantId, cancellationToken);
-        if (courseExists)
-        {
-            return true;
-        }
-
+        // Courses artık MebGroup içinde, kontrol atlandı
         return false;
     }
+}
+
+public class ResetTenantPasswordRequest
+{
+    public string NewPassword { get; set; } = string.Empty;
 }
 
 public class CreateLicenseRequest

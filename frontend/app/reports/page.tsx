@@ -63,7 +63,7 @@ export default function ReportsPage() {
   const router = useRouter();
 
   const [reportType, setReportType] = useState<ReportType>("lesson_schedule");
-  const [courseId, setCourseId] = useState("");
+  const [mebGroupId, setMebGroupId] = useState("");
   const [examId, setExamId] = useState("");
   const [studentId, setStudentId] = useState("");
   const [result, setResult] = useState<ReportResponse | null>(null);
@@ -81,11 +81,11 @@ export default function ReportsPage() {
 
     const parameters: Record<string, string> = {};
     if (reportType === "lesson_schedule" || reportType === "attendance" || reportType === "certificates") {
-      if (!courseId.trim()) {
-        setError("Lütfen kurs ID girin.");
+      if (!mebGroupId.trim()) {
+        setError("Lütfen sınıf ID girin.");
         return;
       }
-      parameters.courseId = courseId.trim();
+      parameters.mebGroupId = mebGroupId.trim();
     }
     if (reportType === "exam_results") {
       if (!examId.trim()) {
@@ -95,10 +95,10 @@ export default function ReportsPage() {
       parameters.examId = examId.trim();
     }
     if (reportType === "payments") {
-      if (courseId.trim()) parameters.courseId = courseId.trim();
+      if (mebGroupId.trim()) parameters.mebGroupId = mebGroupId.trim();
       if (studentId.trim()) parameters.studentId = studentId.trim();
-      if (!courseId.trim() && !studentId.trim()) {
-        setError("Ödeme raporu için kurs ID veya kursiyer ID girin.");
+      if (!mebGroupId.trim() && !studentId.trim()) {
+        setError("Ödeme raporu için sınıf ID veya kursiyer ID girin.");
         return;
       }
     }
@@ -252,8 +252,8 @@ export default function ReportsPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Kurs ID</label>
                   <input
                     type="text"
-                    value={courseId}
-                    onChange={(e) => setCourseId(e.target.value)}
+                    value={mebGroupId}
+                    onChange={(e) => setMebGroupId(e.target.value)}
                     placeholder="Örn: 101"
                     className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -277,8 +277,8 @@ export default function ReportsPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Kurs ID</label>
                     <input
                       type="text"
-                      value={courseId}
-                      onChange={(e) => setCourseId(e.target.value)}
+                      value={mebGroupId}
+                      onChange={(e) => setMebGroupId(e.target.value)}
                       placeholder="Opsiyonel"
                       className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />

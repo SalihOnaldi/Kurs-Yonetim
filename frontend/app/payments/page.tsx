@@ -23,7 +23,7 @@ interface PaymentListItem {
     firstName: string;
     lastName: string;
   };
-  course?: {
+  groupInfo?: {
     id: number;
     srcType: number;
     groupNo: number;
@@ -83,7 +83,7 @@ export default function PaymentsPage() {
       if (statusFilter !== "all") params.append("status", statusFilter);
       if (paymentTypeFilter !== "all") params.append("paymentType", paymentTypeFilter);
       if (branchFilter.trim()) params.append("branch", branchFilter.trim());
-      if (courseFilter.trim()) params.append("courseId", courseFilter.trim());
+      if (courseFilter.trim()) params.append("mebGroupId", courseFilter.trim());
       if (studentFilter.trim()) params.append("studentId", studentFilter.trim());
 
       const response = await api.get<PaymentListItem[]>(
@@ -352,11 +352,11 @@ export default function PaymentsPage() {
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="text-lg font-bold text-gray-900">
                             {payment.student.firstName} {payment.student.lastName}
-                            {payment.course && (
+                            {payment.groupInfo && (
                               <>
                                 {" "}
-                                • SRC{payment.course.srcType} Grup {payment.course.groupNo}
-                                {payment.course.branch ? ` (${payment.course.branch})` : ""}
+                                • SRC{payment.groupInfo.srcType} Grup {payment.groupInfo.groupNo}
+                                {payment.groupInfo.branch ? ` (${payment.groupInfo.branch})` : ""}
                               </>
                             )}
                           </h3>

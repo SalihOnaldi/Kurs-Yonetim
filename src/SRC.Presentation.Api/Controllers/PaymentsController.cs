@@ -27,13 +27,12 @@ public class PaymentsController : ControllerBase
         [FromQuery] string? status,
         [FromQuery] string? paymentType,
         [FromQuery] string? branch,
-        [FromQuery] int? courseId)
+        [FromQuery] int? mebGroupId)
     {
         var query = _context.Payments
             .Include(p => p.Student)
             .Include(p => p.Enrollment)
-                .ThenInclude(e => e!.Course)
-                    .ThenInclude(c => c!.MebGroup)
+                .ThenInclude(e => e!.MebGroup)
             .AsQueryable();
 
         if (studentId.HasValue)
@@ -58,15 +57,14 @@ public class PaymentsController : ControllerBase
             var normalized = branch.Trim().ToLowerInvariant();
             query = query.Where(p =>
                 p.Enrollment != null &&
-                p.Enrollment.Course != null &&
-                p.Enrollment.Course.MebGroup != null &&
-                p.Enrollment.Course.MebGroup.Branch != null &&
-                p.Enrollment.Course.MebGroup.Branch.ToLower() == normalized);
+                p.Enrollment.MebGroup != null &&
+                p.Enrollment.MebGroup.Branch != null &&
+                p.Enrollment.MebGroup.Branch.ToLower() == normalized);
         }
 
-        if (courseId.HasValue)
+        if (mebGroupId.HasValue)
         {
-            query = query.Where(p => p.Enrollment != null && p.Enrollment.CourseId == courseId.Value);
+            query = query.Where(p => p.Enrollment != null && p.Enrollment.MebGroupId == mebGroupId.Value);
         }
 
         var payments = await query
@@ -81,12 +79,12 @@ public class PaymentsController : ControllerBase
                     p.Student.FirstName,
                     p.Student.LastName
                 },
-                CourseInfo = p.Enrollment != null && p.Enrollment.Course != null ? new
+                GroupInfo = p.Enrollment != null && p.Enrollment.MebGroup != null ? new
                 {
-                    p.Enrollment.Course.Id,
-                    p.Enrollment.Course.SrcType,
-                    p.Enrollment.Course.MebGroup.GroupNo,
-                    p.Enrollment.Course.MebGroup.Branch
+                    p.Enrollment.MebGroup.Id,
+                    p.Enrollment.MebGroup.SrcType,
+                    p.Enrollment.MebGroup.GroupNo,
+                    p.Enrollment.MebGroup.Branch
                 } : null,
                 p.Amount,
                 p.DueDate,
@@ -151,7 +149,7 @@ public class PaymentsController : ControllerBase
     {
         var student = await _context.Students
             .Include(s => s.Enrollments)
-                .ThenInclude(e => e.Course)
+                .ThenInclude(e => e.MebGroup)
             .FirstOrDefaultAsync(s => s.Id == studentId);
 
         if (student == null)
@@ -186,9 +184,9 @@ public class PaymentsController : ControllerBase
             }
             enrollmentId = request.EnrollmentId.Value;
         }
-        else if (request.CourseId.HasValue)
+        else if (request.MebGroupId.HasValue)
         {
-            var enrollment = student.Enrollments.FirstOrDefault(e => e.CourseId == request.CourseId.Value);
+            var enrollment = student.Enrollments.FirstOrDefault(e => e.MebGroupId == request.MebGroupId.Value);
             if (enrollment != null)
             {
                 enrollmentId = enrollment.Id;
@@ -340,7 +338,7 @@ public class ApplyDefaultPaymentRequest
     public decimal? PenaltyAmount { get; set; }
     public string? Description { get; set; }
     public int? EnrollmentId { get; set; }
-    public int? CourseId { get; set; }
+    public int? MebGroupId { get; set; }
 }
 
 public class UpdatePaymentRequest

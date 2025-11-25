@@ -113,13 +113,25 @@ export default function DashboardPage() {
 
     const userStr = localStorage.getItem("user");
     if (userStr) {
-      setUser(JSON.parse(userStr));
+      const parsedUser = JSON.parse(userStr);
+      setUser(parsedUser);
+      // Admin kullanıcısı şube ekranına erişemez
+      if (parsedUser?.role === "PlatformOwner") {
+        router.push("/hq/dashboard");
+        return;
+      }
     }
 
     api
       .get("/auth/me")
       .then((response) => {
-        setUser(response.data);
+        const userData = response.data;
+        setUser(userData);
+        // Admin kullanıcısı şube ekranına erişemez
+        if (userData?.role === "PlatformOwner") {
+          router.push("/hq/dashboard");
+          return;
+        }
         loadDashboardData();
       })
       .catch(() => {

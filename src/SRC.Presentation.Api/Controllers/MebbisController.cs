@@ -26,11 +26,11 @@ public class MebbisController : ControllerBase
         _context = context;
     }
 
-    [HttpPost("courses/{courseId:int}/push")]
-    public async Task<ActionResult> PushCourse(int courseId, CancellationToken cancellationToken)
+    [HttpPost("groups/{mebGroupId:int}/push")]
+    public async Task<ActionResult> PushGroup(int mebGroupId, CancellationToken cancellationToken)
     {
-        var result = await _client.SendCourseAsync(courseId, cancellationToken);
-        await AddLogAsync("course", courseId, "push", result, cancellationToken);
+        var result = await _client.SendCourseAsync(mebGroupId, cancellationToken);
+        await AddLogAsync("group", mebGroupId, "push", result, cancellationToken);
         return Ok(result);
     }
 

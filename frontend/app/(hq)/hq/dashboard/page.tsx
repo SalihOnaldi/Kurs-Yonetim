@@ -155,10 +155,37 @@ Deneme Kursu,Ankara,deneme.kurs,GucluSifre123!,info@deneme.com,+905551112233,202
 
 const getApiErrorMessage = (error: unknown, fallback: string) => {
   if (typeof error === "object" && error !== null) {
-    const apiError = error as ApiErrorResponse;
-    const message = apiError.response?.data?.message;
-    if (typeof message === "string" && message.trim().length > 0) {
-      return message;
+    const apiError = error as ApiErrorResponse & { message?: string; code?: string };
+    
+    // Backend'den gelen hata mesajı
+    const backendMessage = apiError.response?.data?.message;
+    if (typeof backendMessage === "string" && backendMessage.trim().length > 0) {
+      return backendMessage;
+    }
+    
+    // Network hatası
+    if (apiError.code === "ERR_NETWORK" || apiError.message?.includes("Network Error")) {
+      return "Backend sunucusuna bağlanılamıyor. Lütfen backend'in çalıştığından emin olun.";
+    }
+    
+    // HTTP status koduna göre mesaj
+    const status = apiError.response?.status;
+    if (status === 401) {
+      return "Oturum süreniz dolmuş. Lütfen tekrar giriş yapın.";
+    }
+    if (status === 403) {
+      return "Bu işlem için yetkiniz bulunmuyor.";
+    }
+    if (status === 404) {
+      return "İstenen kaynak bulunamadı.";
+    }
+    if (status === 500) {
+      return "Sunucu hatası oluştu. Lütfen daha sonra tekrar deneyin.";
+    }
+    
+    // Genel hata mesajı
+    if (typeof apiError.message === "string" && apiError.message.trim().length > 0) {
+      return apiError.message;
     }
   }
   return fallback;
@@ -205,6 +232,8 @@ export default function HqDashboardPage() {
     contactEmail: "",
     contactPhone: "",
   });
+  const [usernameManuallyEdited, setUsernameManuallyEdited] = useState(false);
+  const [passwordManuallyEdited, setPasswordManuallyEdited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [tokenModalTenant, setTokenModalTenant] = useState<{ id: string; name: string } | null>(null);
@@ -225,13 +254,20 @@ export default function HqDashboardPage() {
     setError(null);
     try {
       const response = await api.get<HqTenantUsageDto[]>("/hq/tenants/usage");
-      setData(response.data);
-    } catch (err) {
-      setError(getApiErrorMessage(err, "Veriler yüklenemedi."));
+      setData(Array.isArray(response.data) ? response.data : []);
+    } catch (err: any) {
+      const errorMessage = getApiErrorMessage(err, "Veriler yüklenemedi.");
+      setError(errorMessage);
+      // 401 veya 403 hatası durumunda login sayfasına yönlendir
+      if (err?.response?.status === 401 || err?.response?.status === 403) {
+        setTimeout(() => {
+          router.push("/login");
+        }, 2000);
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   const loadSummary = useCallback(async () => {
     try {
@@ -252,13 +288,19 @@ export default function HqDashboardPage() {
       if (logFilters.channel !== "all") params.append("channel", logFilters.channel);
       params.append("take", "200");
       const response = await api.get<LicenseReminderLogDto[]>(`/hq/license-reminders?${params.toString()}`);
-      setLogs(response.data);
-    } catch (err) {
+      setLogs(Array.isArray(response.data) ? response.data : []);
+    } catch (err: any) {
+      // 401 veya 403 hatası durumunda login sayfasına yönlendir
+      if (err?.response?.status === 401 || err?.response?.status === 403) {
+        setTimeout(() => {
+          router.push("/login");
+        }, 2000);
+      }
       setLogsError(getApiErrorMessage(err, "Hatırlatma kayıtları yüklenemedi."));
     } finally {
       setLogsLoading(false);
     }
-  }, [logFilters]);
+  }, [logFilters, router]);
 
   const loadAuditLogs = useCallback(async () => {
     setAuditLoading(true);
@@ -269,13 +311,19 @@ export default function HqDashboardPage() {
       if (auditFilters.action !== "all") params.append("action", auditFilters.action);
       params.append("take", "200");
       const response = await api.get<AuditLogDto[]>(`/hq/audit?${params.toString()}`);
-      setAuditLogs(response.data);
-    } catch (err) {
+      setAuditLogs(Array.isArray(response.data) ? response.data : []);
+    } catch (err: any) {
+      // 401 veya 403 hatası durumunda login sayfasına yönlendir
+      if (err?.response?.status === 401 || err?.response?.status === 403) {
+        setTimeout(() => {
+          router.push("/login");
+        }, 2000);
+      }
       setAuditError(getApiErrorMessage(err, "İşlem geçmişi yüklenemedi."));
     } finally {
       setAuditLoading(false);
     }
-  }, [auditFilters]);
+  }, [auditFilters, router]);
 
   const loadCsvLogs = useCallback(async () => {
     setCsvLogsLoading(true);
@@ -285,14 +333,20 @@ export default function HqDashboardPage() {
         api.get<LicenseCsvLogDto[]>("/hq/audit/csv-logs?take=100"),
         api.get<CsvSummaryDto>("/hq/audit/csv-summary"),
       ]);
-      setCsvLogs(logsResponse.data);
-      setCsvSummary(summaryResponse.data);
-    } catch (err) {
+      setCsvLogs(Array.isArray(logsResponse.data) ? logsResponse.data : []);
+      setCsvSummary(summaryResponse.data || { last7Days: {}, totalImports: 0, totalExports: 0 });
+    } catch (err: any) {
+      // 401 veya 403 hatası durumunda login sayfasına yönlendir
+      if (err?.response?.status === 401 || err?.response?.status === 403) {
+        setTimeout(() => {
+          router.push("/login");
+        }, 2000);
+      }
       setCsvLogsError(getApiErrorMessage(err, "CSV işlemleri yüklenemedi."));
     } finally {
       setCsvLogsLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     loadData();
@@ -354,9 +408,73 @@ export default function HqDashboardPage() {
     }
   }, [mounted]);
 
+  // Kurs adından kullanıcı adı oluştur
+  const generateUsernameFromName = (name: string): string => {
+    if (!name.trim()) return "";
+    
+    return name
+      .toLowerCase()
+      .replace(/ğ/g, "g")
+      .replace(/ü/g, "u")
+      .replace(/ş/g, "s")
+      .replace(/ı/g, "i")
+      .replace(/ö/g, "o")
+      .replace(/ç/g, "c")
+      .replace(/[^a-z0-9\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, ".")
+      .replace(/-/g, ".")
+      .replace(/\.+/g, ".")
+      .replace(/^\.|\.$/g, "");
+  };
+
+  // Güvenli şifre oluştur
+  const generatePassword = (): string => {
+    const length = 12;
+    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*";
+    let password = "";
+    
+    // En az bir büyük harf, bir küçük harf, bir rakam ve bir özel karakter garantisi
+    password += "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Math.floor(Math.random() * 26)];
+    password += "abcdefghijklmnopqrstuvwxyz"[Math.floor(Math.random() * 26)];
+    password += "0123456789"[Math.floor(Math.random() * 10)];
+    password += "!@#$%&*"[Math.floor(Math.random() * 7)];
+    
+    // Kalan karakterleri rastgele ekle
+    for (let i = password.length; i < length; i++) {
+      password += charset[Math.floor(Math.random() * charset.length)];
+    }
+    
+    // Karakterleri karıştır
+    return password.split("").sort(() => Math.random() - 0.5).join("");
+  };
+
+  // Kurs adı değiştiğinde kullanıcı adı ve şifreyi otomatik oluştur
+  useEffect(() => {
+    if (!usernameManuallyEdited && licenseForm.name) {
+      const generatedUsername = generateUsernameFromName(licenseForm.name);
+      setLicenseForm((prev) => ({ ...prev, username: generatedUsername }));
+    }
+  }, [licenseForm.name, usernameManuallyEdited]);
+
+  // İlk yüklemede şifre oluştur (eğer manuel düzenlenmemişse)
+  useEffect(() => {
+    if (!passwordManuallyEdited && !licenseForm.password && licenseForm.name) {
+      setLicenseForm((prev) => ({ ...prev, password: generatePassword() }));
+    }
+  }, [licenseForm.name, passwordManuallyEdited]);
+
   const handleCreateLicense = async (e: FormEvent) => {
     e.preventDefault();
     setFormError("");
+    
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(licenseForm.contactEmail)) {
+      setFormError("Geçerli bir e-posta adresi giriniz.");
+      return;
+    }
+    
     setSubmitting(true);
 
     try {
@@ -385,6 +503,8 @@ export default function HqDashboardPage() {
         contactEmail: "",
         contactPhone: "",
       });
+      setUsernameManuallyEdited(false);
+      setPasswordManuallyEdited(false);
       setNotification({ type: "success", message: "Lisans başarıyla oluşturuldu." });
       await loadData();
       await loadSummary();
@@ -644,22 +764,31 @@ export default function HqDashboardPage() {
     if (selectedTenants.length === 0) return;
     if (
       action === "delete" &&
-      !window.confirm("Seçili lisansları silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.")
+      !window.confirm("Seçili lisansları ve TÜM VERİLERİNİ silmek istediğinizden emin misiniz? Bu işlem geri alınamaz!")
     ) {
       return;
     }
 
     try {
-      await api.post("/hq/tenants/bulk-status", { action, tenantIds: selectedTenants });
-      setNotification({
-        type: "success",
-        message:
-          action === "disable"
-            ? "Lisanslar pasif hale getirildi."
-            : action === "enable"
-            ? "Lisanslar aktifleştirildi."
-            : "Uygun lisanslar silindi.",
-      });
+      if (action === "delete") {
+        // Tüm verileri ile birlikte sil
+        await api.post("/hq/tenants/delete-with-data", { action: "delete", tenantIds: selectedTenants });
+        setNotification({
+          type: "success",
+          message: "Lisanslar ve tüm verileri başarıyla silindi.",
+        });
+      } else {
+        await api.post("/hq/tenants/bulk-status", { action, tenantIds: selectedTenants });
+        setNotification({
+          type: "success",
+          message:
+            action === "disable"
+              ? "Lisanslar pasif hale getirildi."
+              : action === "enable"
+              ? "Lisanslar aktifleştirildi."
+              : "Uygun lisanslar silindi.",
+        });
+      }
       setSelectedTenants([]);
       await loadData();
       await loadSummary();
@@ -715,6 +844,54 @@ export default function HqDashboardPage() {
       });
     } finally {
       setImporting(false);
+    }
+  };
+
+  const [resetPasswordModal, setResetPasswordModal] = useState<{ tenantId: string; username: string; tenantName: string } | null>(null);
+  const [resetPasswordNewPassword, setResetPasswordNewPassword] = useState("");
+  const [resetPasswordConfirmPassword, setResetPasswordConfirmPassword] = useState("");
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
+  const [resetPasswordError, setResetPasswordError] = useState("");
+
+  const handleResetPassword = (tenantId: string, username: string, tenantName: string) => {
+    setResetPasswordModal({ tenantId, username, tenantName });
+    setResetPasswordNewPassword("");
+    setResetPasswordConfirmPassword("");
+    setResetPasswordError("");
+  };
+
+  const handleResetPasswordSubmit = async () => {
+    if (!resetPasswordModal) return;
+
+    if (!resetPasswordNewPassword || !resetPasswordConfirmPassword) {
+      setResetPasswordError("Tüm alanlar gereklidir.");
+      return;
+    }
+
+    if (resetPasswordNewPassword !== resetPasswordConfirmPassword) {
+      setResetPasswordError("Şifreler eşleşmiyor.");
+      return;
+    }
+
+    if (resetPasswordNewPassword.length < 6) {
+      setResetPasswordError("Şifre en az 6 karakter olmalıdır.");
+      return;
+    }
+
+    setResetPasswordLoading(true);
+    setResetPasswordError("");
+
+    try {
+      await api.post(`/hq/tenants/${resetPasswordModal.tenantId}/reset-password`, {
+        newPassword: resetPasswordNewPassword,
+      });
+      setNotification({ type: "success", message: "Şifre başarıyla sıfırlandı." });
+      setResetPasswordModal(null);
+      await loadData();
+    } catch (err) {
+      setResetPasswordError(getApiErrorMessage(err, "Şifre sıfırlanamadı."));
+    } finally {
+      setResetPasswordLoading(false);
     }
   };
 
@@ -1029,12 +1206,20 @@ export default function HqDashboardPage() {
                         </button>
                       )}
                       {permissions.canManage && (
-                        <button
-                          onClick={() => openTokenModal(tenant.tenantId, tenant.tenantName)}
-                          className="rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 px-3 py-1 text-xs font-medium text-white hover:from-purple-600 hover:to-pink-600 shadow-md transition-all"
-                        >
-                          API Tokenları
-                        </button>
+                        <>
+                          <button
+                            onClick={() => openTokenModal(tenant.tenantId, tenant.tenantName)}
+                            className="rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 px-3 py-1 text-xs font-medium text-white hover:from-purple-600 hover:to-pink-600 shadow-md transition-all"
+                          >
+                            API Tokenları
+                          </button>
+                          <button
+                            onClick={() => handleResetPassword(tenant.tenantId, tenant.username || "", tenant.tenantName)}
+                            className="rounded-lg bg-gradient-to-r from-orange-500 to-red-500 px-3 py-1 text-xs font-medium text-white hover:from-orange-600 hover:to-red-600 shadow-md transition-all"
+                          >
+                            Şifre Sıfırla
+                          </button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -1542,12 +1727,20 @@ export default function HqDashboardPage() {
                         </button>
                       )}
                       {permissions.canManage && (
-                        <button
-                          onClick={() => openTokenModal(tenant.tenantId, tenant.tenantName)}
-                          className="rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 px-3 py-1 text-xs font-medium text-white hover:from-purple-600 hover:to-pink-600 shadow-md transition-all"
-                        >
-                          API Tokenları
-                        </button>
+                        <>
+                          <button
+                            onClick={() => openTokenModal(tenant.tenantId, tenant.tenantName)}
+                            className="rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 px-3 py-1 text-xs font-medium text-white hover:from-purple-600 hover:to-pink-600 shadow-md transition-all"
+                          >
+                            API Tokenları
+                          </button>
+                          <button
+                            onClick={() => handleResetPassword(tenant.tenantId, tenant.username || "", tenant.tenantName)}
+                            className="rounded-lg bg-gradient-to-r from-orange-500 to-red-500 px-3 py-1 text-xs font-medium text-white hover:from-orange-600 hover:to-red-600 shadow-md transition-all"
+                          >
+                            Şifre Sıfırla
+                          </button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -1565,7 +1758,20 @@ export default function HqDashboardPage() {
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-semibold text-slate-800">Yeni Lisans Ekle</h2>
               <button
-                onClick={() => setShowLicenseModal(false)}
+                onClick={() => {
+                  setShowLicenseModal(false);
+                  setLicenseForm({
+                    name: "",
+                    city: "",
+                    username: "",
+                    password: "",
+                    licenseYears: 1,
+                    contactEmail: "",
+                    contactPhone: "",
+                  });
+                  setUsernameManuallyEdited(false);
+                  setPasswordManuallyEdited(false);
+                }}
                 className="text-slate-400 hover:text-slate-600"
               >
                 ✕
@@ -1608,10 +1814,14 @@ export default function HqDashboardPage() {
                   type="text"
                   required
                   value={licenseForm.username}
-                  onChange={(e) => setLicenseForm({ ...licenseForm, username: e.target.value })}
+                  onChange={(e) => {
+                    setUsernameManuallyEdited(true);
+                    setLicenseForm({ ...licenseForm, username: e.target.value });
+                  }}
                   className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-mono"
                   placeholder="Kurs için özel kullanıcı adı"
                 />
+                <p className="mt-1 text-xs text-slate-500">Kurs adından otomatik oluşturulur, düzenlenebilir</p>
               </div>
 
               <div>
@@ -1621,7 +1831,10 @@ export default function HqDashboardPage() {
                     type={showPassword ? "text" : "password"}
                     required
                     value={licenseForm.password}
-                    onChange={(e) => setLicenseForm({ ...licenseForm, password: e.target.value })}
+                    onChange={(e) => {
+                      setPasswordManuallyEdited(true);
+                      setLicenseForm({ ...licenseForm, password: e.target.value });
+                    }}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 font-mono"
                     placeholder="Kurs için özel şifre"
                   />
@@ -1643,6 +1856,7 @@ export default function HqDashboardPage() {
                     )}
                   </button>
                 </div>
+                <p className="mt-1 text-xs text-slate-500">Güvenli şifre otomatik oluşturulur, düzenlenebilir</p>
               </div>
 
               <div>
@@ -1688,7 +1902,20 @@ export default function HqDashboardPage() {
               <div className="flex justify-end gap-2 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowLicenseModal(false)}
+                  onClick={() => {
+                    setShowLicenseModal(false);
+                    setLicenseForm({
+                      name: "",
+                      city: "",
+                      username: "",
+                      password: "",
+                      licenseYears: 1,
+                      contactEmail: "",
+                      contactPhone: "",
+                    });
+                    setUsernameManuallyEdited(false);
+                    setPasswordManuallyEdited(false);
+                  }}
                   className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   İptal
@@ -1971,6 +2198,84 @@ export default function HqDashboardPage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Şifre Sıfırlama Modal */}
+      {resetPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-6">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold text-slate-800">Şifre Sıfırla</h2>
+                <p className="text-sm text-slate-500">
+                  {resetPasswordModal.tenantName} ({resetPasswordModal.username})
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setResetPasswordModal(null);
+                  setResetPasswordNewPassword("");
+                  setResetPasswordConfirmPassword("");
+                  setResetPasswordError("");
+                }}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+
+            {resetPasswordError && (
+              <div className="mb-4 rounded-lg bg-red-50 border-l-4 border-red-500 px-4 py-3 text-sm text-red-700">
+                {resetPasswordError}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Yeni Şifre</label>
+                <input
+                  type="password"
+                  value={resetPasswordNewPassword}
+                  onChange={(e) => setResetPasswordNewPassword(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Yeni şifreyi girin"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Yeni Şifre (Tekrar)</label>
+                <input
+                  type="password"
+                  value={resetPasswordConfirmPassword}
+                  onChange={(e) => setResetPasswordConfirmPassword(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Yeni şifreyi tekrar girin"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setResetPasswordModal(null);
+                  setResetPasswordNewPassword("");
+                  setResetPasswordConfirmPassword("");
+                  setResetPasswordError("");
+                }}
+                className="px-4 py-2 border-2 border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50"
+              >
+                İptal
+              </button>
+              <button
+                onClick={handleResetPasswordSubmit}
+                disabled={resetPasswordLoading}
+                className="px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 disabled:opacity-50"
+              >
+                {resetPasswordLoading ? "Sıfırlanıyor..." : "Şifreyi Sıfırla"}
+              </button>
             </div>
           </div>
         </div>

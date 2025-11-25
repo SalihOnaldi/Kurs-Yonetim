@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { logger } from "@/utils/logger";
+import { toast } from "@/components/Toast";
 
 type ApprovalStatus = "all" | "draft" | "pending" | "approved" | "rejected";
 
@@ -41,9 +43,14 @@ interface ClassSummary {
   endDate: string;
   capacity: number;
   status: string;
-  courseCount: number;
-  activeCourseCount: number;
   name: string;
+  srcType: number;
+  isMixed: boolean;
+  mixedTypes?: string | null;
+  plannedHours: number;
+  mebApprovalStatus: string;
+  enrollmentCount: number;
+  createdAt: string;
 }
 
 interface ClassFormData {
@@ -137,9 +144,29 @@ export default function CoursesPage() {
       return;
     }
 
+    // Admin kullanıcısı şube ekranına erişemez
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const parsedUser = JSON.parse(userStr);
+        if (parsedUser?.role === "PlatformOwner") {
+          router.push("/hq/dashboard");
+          return;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     api
       .get("/auth/me")
-      .then(() => {
+      .then((response) => {
+        const userData = response.data;
+        // Admin kullanıcısı şube ekranına erişemez
+        if (userData?.role === "PlatformOwner") {
+          router.push("/hq/dashboard");
+          return;
+        }
         setAuthorized(true);
       })
       .catch(() => {
@@ -179,17 +206,36 @@ export default function CoursesPage() {
       if (monthFilter) params.append("month", monthFilter);
       if (searchFilter.trim()) params.append("search", searchFilter.trim());
 
-      const response = await api.get<CourseListResponse>(
-        `/courses${params.size ? `?${params.toString()}` : ""}`
+      const response = await api.get<CourseListItem[]>(
+        `/courses/groups${params.size ? `?${params.toString()}` : ""}`
       );
-      setCourses(response.data.items || []);
-      setTotalCount(response.data.totalCount || 0);
+      const groups = Array.isArray(response.data) ? response.data : [];
+      // Backend'den gelen MebGroup'ları CourseListItem formatına dönüştür
+      const courseItems: CourseListItem[] = groups.map((group: any) => ({
+        id: group.id,
+        name: `SRC${group.srcType} ${group.name}`,
+        srcType: group.srcType,
+        srcTypeName: `SRC${group.srcType}`,
+        mebGroupId: group.id,
+        branchName: group.branch || "",
+        mebGroupName: group.name,
+        startDate: group.startDate,
+        endDate: group.endDate,
+        plannedHours: group.plannedHours || 40,
+        isMixed: group.isMixed || false,
+        capacity: group.capacity,
+        enrolledCount: group.enrollmentCount || 0,
+        mebApprovalStatus: group.mebApprovalStatus || "draft",
+        createdAt: group.createdAt,
+      }));
+      setCourses(courseItems);
+      setTotalCount(courseItems.length);
     } catch (err: any) {
       console.error("Courses load error:", err);
       const message =
         err.response?.data?.message ||
         err.message ||
-        "Kurs listesi yüklenirken bir hata oluştu.";
+        "Sınıf listesi yüklenirken bir hata oluştu.";
       setListError(message);
     } finally {
       if (initial) setLoading(false);
@@ -201,9 +247,9 @@ export default function CoursesPage() {
     try {
       setClassListError("");
       const response = await api.get<ClassSummary[]>("/courses/groups");
-      const data = response.data || [];
+      const data = Array.isArray(response.data) ? response.data : [];
       const filtered = data.filter(
-        (item) => !item.status || item.status.toLowerCase() !== "inactive"
+        (item) => item.status && item.status.toLowerCase() !== "inactive"
       );
       setClasses(filtered);
       if (useExistingClass) {
@@ -218,10 +264,11 @@ export default function CoursesPage() {
         });
       }
     } catch (err: any) {
-      console.error("Class list load error:", err);
+      logger.error("Class list load error:", err);
       const message =
         err.response?.data?.message || err.message || "Sınıflar yüklenirken bir hata oluştu.";
       setClassListError(message);
+      toast.error(message);
       setClasses([]);
       if (useExistingClass) {
         setFormData((prev) => ({ ...prev, mebGroupId: 0 }));
@@ -295,26 +342,52 @@ export default function CoursesPage() {
         }
       }
 
-      let payload: Record<string, unknown> = {
-        srcType: formData.isMixed
-          ? (selectedMixedSrcTypes[0] ?? formData.srcType)
-          : formData.srcType,
-        isMixed: formData.isMixed,
-        mixedTypes: formData.isMixed
-          ? selectedMixedSrcTypes
-              .map((value) => SRC_OPTIONS.find((option) => option.value === value)?.label ?? `SRC${value}`)
-              .join(",")
-          : null,
-        plannedHours: formData.plannedHours,
-      };
-
       if (useExistingClass) {
         if (!formData.mebGroupId) {
           setFormError("Lütfen bir sınıf seçin veya oluşturun.");
           setSubmittingCourse(false);
           return;
         }
-        payload = { ...payload, mebGroupId: formData.mebGroupId };
+        // Mevcut sınıfın SRC bilgilerini güncelle
+        try {
+          const srcTypeValue = formData.isMixed
+            ? (selectedMixedSrcTypes[0] ?? formData.srcType)
+            : formData.srcType;
+          
+          if (!srcTypeValue || srcTypeValue < 1 || srcTypeValue > 5) {
+            setFormError("Geçerli bir SRC türü seçiniz (1-5).");
+            setSubmittingCourse(false);
+            return;
+          }
+          
+          await api.put(`/courses/groups/${formData.mebGroupId}`, {
+            SrcType: srcTypeValue,
+            IsMixed: formData.isMixed,
+            MixedTypes: formData.isMixed
+              ? selectedMixedSrcTypes
+                  .map((value) => SRC_OPTIONS.find((option) => option.value === value)?.label ?? `SRC${value}`)
+                  .join(",")
+              : null,
+            PlannedHours: formData.plannedHours || 40,
+          });
+          closeManageModal();
+          setFormData({
+            mebGroupId: classes.length ? classes[0].id : 0,
+            srcType: 1,
+            isMixed: false,
+            plannedHours: 40,
+          });
+          setSelectedMixedSrcTypes([]);
+          await loadClasses();
+          await loadCourses(true);
+          return;
+        } catch (err: any) {
+          const message =
+            err.response?.data?.message || err.message || "Sınıf güncellenirken bir hata oluştu.";
+          setFormError(message);
+          setSubmittingCourse(false);
+          return;
+        }
       } else {
         if (!newClassForm.startDate || !newClassForm.endDate) {
           setFormError("Başlangıç ve bitiş tarihleri gereklidir.");
@@ -322,7 +395,21 @@ export default function CoursesPage() {
           return;
         }
 
-        if (new Date(newClassForm.startDate) >= new Date(newClassForm.endDate)) {
+        // Tarihleri kontrol et
+        const startDateObj = new Date(newClassForm.startDate + "T00:00:00");
+        const endDateObj = new Date(newClassForm.endDate + "T00:00:00");
+        
+        if (isNaN(startDateObj.getTime()) || isNaN(endDateObj.getTime())) {
+          setFormError("Geçerli tarih formatı giriniz.");
+          setSubmittingCourse(false);
+          return;
+        }
+        
+        // Tarihleri sadece tarih kısmına göre karşılaştır (saat bilgisini göz ardı et)
+        const startDateOnly = new Date(startDateObj.getFullYear(), startDateObj.getMonth(), startDateObj.getDate());
+        const endDateOnly = new Date(endDateObj.getFullYear(), endDateObj.getMonth(), endDateObj.getDate());
+        
+        if (startDateOnly.getTime() >= endDateOnly.getTime()) {
           setFormError("Bitiş tarihi başlangıç tarihinden büyük olmalıdır.");
           setSubmittingCourse(false);
           return;
@@ -353,19 +440,42 @@ export default function CoursesPage() {
           return;
         }
 
+        // Tarihleri ISO formatına çevir (backend DateTime bekliyor)
+        // Backend UTC bekliyor, bu yüzden local timezone'dan UTC'ye çeviriyoruz
+        const startDateISO = new Date(newClassForm.startDate + "T00:00:00").toISOString();
+        const endDateISO = new Date(newClassForm.endDate + "T00:00:00").toISOString();
+        
+        // SrcType kontrolü - null olamaz
+        const srcTypeValue = formData.isMixed
+          ? (selectedMixedSrcTypes[0] ?? formData.srcType)
+          : formData.srcType;
+        
+        if (!srcTypeValue || srcTypeValue < 1 || srcTypeValue > 5) {
+          setFormError("Geçerli bir SRC türü seçiniz (1-5).");
+          setSubmittingCourse(false);
+          return;
+        }
+        
         payload = {
-          ...payload,
-          groupYear: newClassForm.year,
-          groupMonth: newClassForm.month,
-          groupNo: newClassForm.groupNo,
-          groupStartDate: newClassForm.startDate,
-          groupEndDate: newClassForm.endDate,
-          groupBranch: newClassForm.branch.trim() || undefined,
-          groupCapacity: newClassForm.capacity,
+          Year: newClassForm.year,
+          Month: newClassForm.month,
+          GroupNo: newClassForm.groupNo,
+          StartDate: startDateISO,
+          EndDate: endDateISO,
+          Branch: newClassForm.branch.trim() || undefined,
+          Capacity: newClassForm.capacity,
+          SrcType: srcTypeValue,
+          IsMixed: formData.isMixed,
+          MixedTypes: formData.isMixed
+            ? selectedMixedSrcTypes
+                .map((value) => SRC_OPTIONS.find((option) => option.value === value)?.label ?? `SRC${value}`)
+                .join(",")
+            : null,
+          PlannedHours: formData.plannedHours || 40,
         };
       }
 
-      const response = await api.post("/courses", payload);
+      const response = await api.post("/courses/groups", payload);
       const createdCourse = response.data;
       closeManageModal();
       setFormData({
@@ -389,7 +499,7 @@ export default function CoursesPage() {
     } catch (err: any) {
       console.error("Course create error:", err);
       const message =
-        err.response?.data?.message || err.message || "Kurs oluşturulurken bir hata oluştu.";
+        err.response?.data?.message || err.message || "Sınıf oluşturulurken bir hata oluştu.";
       setFormError(message);
     } finally {
       setSubmittingCourse(false);
@@ -515,15 +625,15 @@ export default function CoursesPage() {
   };
 
   const handleDeleteCourse = async (course: CourseListItem) => {
-    if (!confirm(`${course.name} kursunu silmek istediğinize emin misiniz?`)) {
+    if (!confirm(`${course.name} sınıfını silmek istediğinize emin misiniz?`)) {
       return;
     }
     try {
-      await api.delete(`/courses/${course.id}`);
+      await api.delete(`/courses/groups/${course.id}`);
       loadCourses(true);
     } catch (err: any) {
       const message =
-        err.response?.data?.message || err.message || "Kurs silinirken bir hata oluştu.";
+        err.response?.data?.message || err.message || "Sınıf silinirken bir hata oluştu.";
       alert(message);
     }
   };
@@ -569,9 +679,9 @@ export default function CoursesPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100">
-        <div className="text-center">
+          <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4" />
-          <div className="text-lg text-gray-700 font-medium">Kurs listesi yükleniyor...</div>
+          <div className="text-lg text-gray-700 font-medium">Sınıf listesi yükleniyor...</div>
         </div>
       </div>
     );
@@ -597,7 +707,7 @@ export default function CoursesPage() {
               </button>
               <h1 className="text-xl font-bold text-gray-900 flex items-center">
                 <span className="mr-2 text-2xl">📚</span>
-                Kurs Yönetimi
+                Sınıf Yönetimi
               </h1>
             </div>
           </div>
@@ -609,10 +719,10 @@ export default function CoursesPage() {
           <section className="bg-white border border-emerald-100 shadow-xl rounded-xl p-6">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
               <div className="space-y-1">
-                <h2 className="text-xl font-semibold text-gray-900">Kurs ve Sınıf Yönetimi</h2>
+                <h2 className="text-xl font-semibold text-gray-900">Sınıf Yönetimi</h2>
                 <p className="text-sm text-gray-600 max-w-2xl">
-                  Tüm kurs ve sınıf süreçlerini tek akışta yönetin. Mevcut sınıfları seçin, yeni sınıflar
-                  oluşturun ve kurs planlamasını aynı yerden tamamlayın.
+                  Tüm sınıf süreçlerini tek akışta yönetin. Mevcut sınıfları seçin, yeni sınıflar
+                  oluşturun ve SRC planlamasını aynı yerden tamamlayın.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -620,7 +730,7 @@ export default function CoursesPage() {
                   onClick={openCourseModal}
                   className="inline-flex items-center justify-center px-5 py-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-lg shadow-lg hover:from-emerald-700 hover:to-green-700 font-medium transition-transform transform hover:scale-[1.02]"
                 >
-                  + Yeni Kurs / Sınıf
+                  + Yeni Sınıf
                 </button>
                 <button
                   type="button"
@@ -712,14 +822,14 @@ export default function CoursesPage() {
                     setSearchFilter(e.target.value);
                     setPage(1);
                   }}
-                  placeholder="Kurs adı, grup adı..."
+                  placeholder="Sınıf adı, grup adı..."
                   className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
               </div>
             </div>
             <div className="flex justify-between items-center mt-4">
               <div className="text-sm text-gray-500">
-                Toplam <span className="font-semibold text-gray-700">{totalCount}</span> kurs listeleniyor.
+                Toplam <span className="font-semibold text-gray-700">{totalCount}</span> sınıf listeleniyor.
                 {fetching && (
                   <span className="ml-2 text-green-600 animate-pulse">Güncelleniyor...</span>
                 )}
@@ -742,10 +852,10 @@ export default function CoursesPage() {
               <div className="px-6 py-12 text-center">
                 <div className="text-6xl mb-4">📚</div>
                 <p className="text-gray-500 text-lg font-medium">
-                  Filtre kriterlerine uygun kurs bulunamadı.
+                  Filtre kriterlerine uygun sınıf bulunamadı.
                 </p>
                 <p className="text-gray-400 text-sm mt-2">
-                  Filtreleri değiştirerek tekrar deneyin veya yeni kurs oluşturun.
+                  Filtreleri değiştirerek tekrar deneyin veya yeni sınıf oluşturun.
                 </p>
               </div>
             ) : (
@@ -755,7 +865,7 @@ export default function CoursesPage() {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                          Kurs
+                          Sınıf
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
                           Grup / Şube
@@ -895,7 +1005,7 @@ export default function CoursesPage() {
           >
             <div className="sticky top-0 bg-white border-b border-emerald-100 px-6 py-4 flex justify-between items-center">
               <h3 className="text-2xl font-bold text-emerald-900">
-                {manageModalMode === "createCourse" ? "Kurs ve Sınıf Oluştur" : "Sınıfı Düzenle"}
+                {manageModalMode === "createCourse" ? "Sınıf Oluştur" : "Sınıfı Düzenle"}
               </h3>
               <button
                 onClick={closeManageModal}
@@ -917,7 +1027,7 @@ export default function CoursesPage() {
                   <header>
                     <h4 className="text-lg font-semibold text-emerald-800">Sınıf Bilgileri</h4>
                     <p className="text-sm text-emerald-600">
-                      Mevcut bir sınıfı seçebilir veya kursla birlikte yeni bir sınıf oluşturabilirsiniz.
+                      Mevcut bir sınıfı seçebilir veya yeni bir sınıf oluşturabilirsiniz.
                     </p>
                   </header>
 
@@ -1104,8 +1214,8 @@ export default function CoursesPage() {
 
                 <section className="space-y-4">
                   <header>
-                    <h4 className="text-lg font-semibold text-emerald-800">Kurs Bilgileri</h4>
-                    <p className="text-sm text-emerald-600">Kurs türünü, saatini ve varsayılan ayarları seçin.</p>
+                    <h4 className="text-lg font-semibold text-emerald-800">SRC Bilgileri</h4>
+                    <p className="text-sm text-emerald-600">SRC türünü, saatini ve varsayılan ayarları seçin.</p>
                   </header>
 
                   <div>
@@ -1171,7 +1281,7 @@ export default function CoursesPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-2">Karma SRC Türleri</label>
                       <div className="space-y-2">
                         <p className="text-xs text-gray-500">
-                          Birden fazla seçebilirsiniz. İlk seçilen tür ana kurs türü olarak kaydedilir.
+                          Birden fazla seçebilirsiniz. İlk seçilen tür ana SRC türü olarak kaydedilir.
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {SRC_OPTIONS.map((option) => (

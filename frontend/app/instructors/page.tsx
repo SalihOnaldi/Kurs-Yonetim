@@ -30,18 +30,15 @@ interface InstructorSlot {
   subject?: string | null;
   notes?: string | null;
   classroomName?: string | null;
-  courseId: number;
+  mebGroupId: number;
   durationMinutes: number;
-  course: {
+  groupInfo: {
     id: number;
     srcType: number;
-    group?: {
-      id: number;
-      year: number;
-      month: number;
-      groupNo: number;
-      branch?: string | null;
-    } | null;
+    year: number;
+    month: number;
+    groupNo: number;
+    branch?: string | null;
   };
 }
 
@@ -518,16 +515,16 @@ export default function InstructorsPage() {
                               </div>
                               <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-2">
                                 <span className="px-2 py-1 bg-indigo-50 text-indigo-600 rounded-lg">
-                                  SRC{slot.course?.srcType}
+                                  SRC{slot.group?.srcType}
                                 </span>
-                                {slot.course?.group && (
+                                {slot.group && (
                                   <span className="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-lg">
-                                    {slot.course.group.year}-{String(slot.course.group.month).padStart(
+                                    {slot.group.year}-{String(slot.group.month).padStart(
                                       2,
                                       "0"
                                     )}
-                                    -GRUP {slot.course.group.groupNo}
-                                    {slot.course.group.branch ? ` (${slot.course.group.branch})` : ""}
+                                    -GRUP {slot.group.groupNo}
+                                    {slot.group.branch ? ` (${slot.group.branch})` : ""}
                                   </span>
                                 )}
                                 {slot.classroomName && (
@@ -545,7 +542,7 @@ export default function InstructorsPage() {
                             </div>
                             <button
                               onClick={() =>
-                                router.push(`/courses/${slot.courseId}?tab=schedule&slot=${slot.id}`)
+                                router.push(`/courses/${slot.mebGroupId}?tab=schedule&slot=${slot.id}`)
                               }
                               className="self-start md:self-center px-3 py-2 border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-50 text-xs font-medium"
                             >

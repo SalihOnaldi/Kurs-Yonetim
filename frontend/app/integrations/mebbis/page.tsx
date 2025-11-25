@@ -16,7 +16,7 @@ interface SyncLog {
 }
 
 interface ActionState {
-  courseId: string;
+  mebGroupId: string;
   enrollmentId: string;
   documentId: string;
 }
@@ -30,7 +30,7 @@ export default function MebbisIntegrationPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [actionState, setActionState] = useState<ActionState>({
-    courseId: "",
+    mebGroupId: "",
     enrollmentId: "",
     documentId: "",
   });
@@ -75,8 +75,8 @@ export default function MebbisIntegrationPage() {
 
     switch (type) {
       case "course":
-        idValue = actionState.courseId.trim();
-        endpoint = `/mebbis/courses/${idValue}/push`;
+        idValue = actionState.mebGroupId.trim();
+        endpoint = `/mebbis/groups/${idValue}/push`;
         break;
       case "enrollment":
         idValue = actionState.enrollmentId.trim();
@@ -160,9 +160,9 @@ export default function MebbisIntegrationPage() {
             <input
               type="number"
               min={1}
-              value={actionState.courseId}
-              onChange={(event) => setActionState((prev) => ({ ...prev, courseId: event.target.value }))}
-              placeholder="Kurs ID"
+              value={actionState.mebGroupId}
+              onChange={(event) => setActionState((prev) => ({ ...prev, mebGroupId: event.target.value }))}
+              placeholder="Sınıf ID"
               className="w-full px-4 py-2 border-2 border-emerald-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
             <button

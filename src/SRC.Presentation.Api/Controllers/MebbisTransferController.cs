@@ -24,17 +24,16 @@ public class MebbisTransferController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult> GetJobs([FromQuery] int? courseId)
+    public async Task<ActionResult> GetJobs([FromQuery] int? mebGroupId)
     {
         var query = _context.MebbisTransferJobs
             .AsNoTracking()
-            .Include(j => j.Course)
-                .ThenInclude(c => c.MebGroup)
+            .Include(j => j.MebGroup)
             .AsQueryable();
 
-        if (courseId.HasValue)
+        if (mebGroupId.HasValue)
         {
-            query = query.Where(j => j.CourseId == courseId.Value);
+            query = query.Where(j => j.MebGroupId == mebGroupId.Value);
         }
 
         var jobs = await query
@@ -42,7 +41,7 @@ public class MebbisTransferController : ControllerBase
             .Select(j => new
             {
                 j.Id,
-                j.CourseId,
+                j.MebGroupId,
                 j.Mode,
                 j.Status,
                 j.SuccessCount,
@@ -51,17 +50,14 @@ public class MebbisTransferController : ControllerBase
                 j.StartedAt,
                 j.CompletedAt,
                 j.CreatedAt,
-                Course = new
+                Group = new
                 {
-                    j.Course.Id,
-                    j.Course.SrcType,
-                    Group = new
-                    {
-                        j.Course.MebGroup.Year,
-                        j.Course.MebGroup.Month,
-                        j.Course.MebGroup.GroupNo,
-                        j.Course.MebGroup.Branch
-                    }
+                    j.MebGroup.Id,
+                    j.MebGroup.SrcType,
+                    j.MebGroup.Year,
+                    j.MebGroup.Month,
+                    j.MebGroup.GroupNo,
+                    j.MebGroup.Branch
                 }
             })
             .ToListAsync();
@@ -81,24 +77,23 @@ public class MebbisTransferController : ControllerBase
         return Ok(job);
     }
 
-    [HttpPost("{courseId}")]
-    public async Task<ActionResult> TriggerTransfer(int courseId, [FromQuery] string mode = "dry_run")
+    [HttpPost("{mebGroupId}")]
+    public async Task<ActionResult> TriggerTransfer(int mebGroupId, [FromQuery] string mode = "dry_run")
     {
         var normalizedMode = (mode ?? "dry_run").Trim().ToLower();
         var isDryRun = normalizedMode != "live";
 
-        var course = await _context.Courses
-            .Include(c => c.MebGroup)
-            .Include(c => c.Enrollments)
+        var group = await _context.MebGroups
+            .Include(g => g.Enrollments)
                 .ThenInclude(e => e.Student)
-            .FirstOrDefaultAsync(c => c.Id == courseId);
+            .FirstOrDefaultAsync(g => g.Id == mebGroupId);
 
-        if (course == null)
+        if (group == null)
         {
-            return NotFound(new { message = "Kurs bulunamadı" });
+            return NotFound(new { message = "Sınıf bulunamadı" });
         }
 
-        var enrollments = course.Enrollments
+        var enrollments = group.Enrollments
             .Where(e => e.Status == "active")
             .ToList();
 
@@ -111,7 +106,7 @@ public class MebbisTransferController : ControllerBase
 
         var job = new SRC.Domain.Entities.MebbisTransferJob
         {
-            CourseId = courseId,
+            MebGroupId = mebGroupId,
             Mode = isDryRun ? "dry_run" : "live",
             Status = "running",
             StartedAt = DateTime.UtcNow,
@@ -153,7 +148,7 @@ public class MebbisTransferController : ControllerBase
                     StudentName = student.FirstName,
                     StudentSurname = student.LastName,
                     BirthDate = student.BirthDate,
-                    SrcType = enrollment.Course.SrcType,
+                    SrcType = enrollment.MebGroup.SrcType,
                     EnrollmentDate = enrollment.EnrollmentDate
                 };
 
@@ -212,8 +207,7 @@ public class MebbisTransferController : ControllerBase
     {
         var query = _context.MebbisTransferJobs
             .AsNoTracking()
-            .Include(j => j.Course)
-                .ThenInclude(c => c.MebGroup)
+            .Include(j => j.MebGroup)
             .Include(j => j.TransferItems)
                 .ThenInclude(t => t.Enrollment)
                     .ThenInclude(e => e.Student)
@@ -221,7 +215,7 @@ public class MebbisTransferController : ControllerBase
             .Select(j => new
             {
                 j.Id,
-                j.CourseId,
+                j.MebGroupId,
                 j.Mode,
                 j.Status,
                 j.SuccessCount,
@@ -230,19 +224,16 @@ public class MebbisTransferController : ControllerBase
                 j.StartedAt,
                 j.CompletedAt,
                 j.CreatedAt,
-                Course = new
+                Group = new
                 {
-                    j.Course.Id,
-                    j.Course.SrcType,
-                    Group = new
-                    {
-                        j.Course.MebGroup.Year,
-                        j.Course.MebGroup.Month,
-                        j.Course.MebGroup.GroupNo,
-                        j.Course.MebGroup.Branch,
-                        j.Course.MebGroup.StartDate,
-                        j.Course.MebGroup.EndDate
-                    }
+                    j.MebGroup.Id,
+                    j.MebGroup.SrcType,
+                    j.MebGroup.Year,
+                    j.MebGroup.Month,
+                    j.MebGroup.GroupNo,
+                    j.MebGroup.Branch,
+                    j.MebGroup.StartDate,
+                    j.MebGroup.EndDate
                 },
                 Items = includeItems
                     ? j.TransferItems

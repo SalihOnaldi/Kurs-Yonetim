@@ -3,24 +3,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import api from "@/lib/api";
+import { toast } from "@/components/Toast";
+import { logger } from "@/utils/logger";
 
 interface ExamDetail {
   id: number;
-  courseId: number;
+  mebGroupId: number;
   examType: string;
   examDate: string;
   mebSessionCode?: string | null;
   status: string;
   notes?: string | null;
-  courseInfo: {
+  groupInfo: {
     id: number;
     srcType: number;
-    groupInfo: {
       year: number;
       month: number;
       groupNo: number;
       branch?: string | null;
-    };
   };
   results: ExamResult[];
   stats: {
@@ -79,6 +79,11 @@ export default function ExamDetailPage() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
   const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [showStudentSelector, setShowStudentSelector] = useState(false);
+  const [availableStudents, setAvailableStudents] = useState<any[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
+  const [groups, setGroups] = useState<any[]>([]);
 
   useEffect(() => {
     if (!examId || Number.isNaN(examId)) {
@@ -102,6 +107,7 @@ export default function ExamDetailPage() {
   useEffect(() => {
     if (!authorized) return;
     loadExam();
+    loadGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized]);
 
@@ -114,12 +120,13 @@ export default function ExamDetailPage() {
       setResults(response.data.results.map((r) => ({ ...r, dirty: false, deleted: false })));
       setMarkCompleted(response.data.status === "completed");
     } catch (err: any) {
-      console.error("Exam detail load error:", err);
+      logger.error("Exam detail load error:", err);
       const message =
         err.response?.data?.message ||
         err.message ||
         "Sınav detayları yüklenirken bir hata oluştu.";
       setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -173,10 +180,118 @@ export default function ExamDetailPage() {
     );
   };
 
+  const loadGroups = async () => {
+    try {
+      const response = await api.get("/courses/groups");
+      setGroups(response.data || []);
+    } catch (error) {
+      logger.error("Groups load error:", error);
+      // Fallback: Boş array
+      setGroups([]);
+    }
+  };
+
+  const loadStudentsFromGroups = async () => {
+    if (selectedGroupIds.length === 0) {
+      toast.warning("Lütfen en az bir sınıf seçin.");
+      return;
+    }
+
+    try {
+      setLoadingStudents(true);
+      const allStudents: any[] = [];
+      
+      for (const groupId of selectedGroupIds) {
+        const response = await api.get(`/exams/groups/${groupId}/students`);
+        const students = response.data || [];
+        allStudents.push(...students);
+      }
+
+      // Duplicate'leri kaldır ve selected property ekle
+      const uniqueStudents = Array.from(
+        new Map(allStudents.map((s) => [s.id, s])).values()
+      ).map((s) => ({ ...s, selected: false }));
+      
+      setAvailableStudents(uniqueStudents);
+      setShowStudentSelector(true);
+    } catch (error: any) {
+      const message = error.response?.data?.message || "Öğrenciler yüklenirken hata oluştu.";
+      toast.error(message);
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
+  const loadEligibleStudentsForPractical = async () => {
+    if (!exam) return;
+    
+    try {
+      setLoadingStudents(true);
+      
+      // Önce aynı kurs için yazılı sınavı bul
+      const examsResponse = await api.get(`/exams?mebGroupId=${exam.mebGroupId}`);
+      const allExams = examsResponse.data?.items || [];
+      const writtenExam = allExams.find(
+        (e: any) =>
+          e.mebGroupId === exam.mebGroupId &&
+          (e.examType?.toLowerCase() === "yazili" || e.examType?.toLowerCase() === "written") &&
+          e.status === "completed"
+      );
+      
+      if (!writtenExam) {
+        toast.warning("Bu sınıf için tamamlanmış yazılı sınav bulunamadı.");
+        return;
+      }
+      
+      const response = await api.get(
+        `/exams/practical/eligible-students?mebGroupId=${exam.mebGroupId}&writtenExamId=${writtenExam.id}`
+      );
+      const students = response.data || [];
+      
+      if (students.length === 0) {
+        toast.info("Yazılı sınavı geçen öğrenci bulunamadı.");
+        return;
+      }
+      
+      // Mevcut sonuçlara ekle
+      const existingStudentIds = new Set(results.map((r) => r.studentInfo.id));
+      const newStudents = students.filter((s: any) => !existingStudentIds.has(s.studentId));
+      
+      if (newStudents.length === 0) {
+        toast.info("Tüm yazılıyı geçen öğrenciler zaten eklenmiş.");
+        return;
+      }
+      
+      const tempResults = newStudents.map((student: any) => ({
+        id: -Date.now() - Math.random(),
+        studentInfo: {
+          id: student.studentId,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          tcKimlikNo: student.tcKimlikNo,
+        },
+        score: 0,
+        pass: false,
+        attemptNo: 1,
+        notes: "",
+        dirty: true,
+        deleted: false,
+      }));
+      
+      setResults((prev) => [...prev, ...tempResults]);
+      toast.success(`${newStudents.length} öğrenci eklendi.`);
+    } catch (error: any) {
+      const message = error.response?.data?.message || "Yazılıyı geçen öğrenciler yüklenirken hata oluştu.";
+      toast.error(message);
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
   const handleAddResult = () => {
     const studentId = parseInt(prompt("Öğrenci ID'sini girin:") || "", 10);
     if (!studentId) {
-      alert("Geçerli bir öğrenci ID'si girmelisiniz.");
+      toast.warning("Geçerli bir öğrenci ID'si girmelisiniz.");
       return;
     }
     const firstName = prompt("Öğrenci adı:") || "Ad";
@@ -203,6 +318,38 @@ export default function ExamDetailPage() {
     ]);
   };
 
+  const handleAddSelectedStudents = () => {
+    const selected = availableStudents.filter((s) => s.selected);
+    if (selected.length === 0) {
+      toast.warning("Lütfen en az bir öğrenci seçin.");
+      return;
+    }
+
+    const existingStudentIds = new Set(results.map((r) => r.studentInfo.id));
+    const newResults = selected
+      .filter((s) => !existingStudentIds.has(s.id))
+      .map((student) => ({
+        id: -Date.now() - Math.random(),
+        studentInfo: {
+          id: student.id,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          tcKimlikNo: student.tcKimlikNo || "***********",
+        },
+        score: 0,
+        pass: false,
+        attemptNo: 1,
+        notes: "",
+        dirty: true,
+        deleted: false,
+      }));
+
+    setResults((prev) => [...prev, ...newResults]);
+    setShowStudentSelector(false);
+    setAvailableStudents([]);
+    setSelectedGroupIds([]);
+  };
+
   const handleDeleteResult = (result: EditableResult) => {
     if (!confirm("Bu sınav sonucunu silmek istediğinize emin misiniz?")) {
       return;
@@ -217,7 +364,7 @@ export default function ExamDetailPage() {
         .catch((err: any) => {
           const message =
             err.response?.data?.message || err.message || "Kayıt silinirken hata oluştu.";
-          alert(message);
+          toast.error(message);
         });
     }
   };
@@ -247,12 +394,13 @@ export default function ExamDetailPage() {
 
       await api.post(`/exams/${examId}/results`, payload);
       setSaveMessage("Sınav sonuçları kaydedildi.");
+      toast.success("Sınav sonuçları başarıyla kaydedildi.");
       await loadExam();
     } catch (err: any) {
-      console.error("Exam results save error:", err);
+      logger.error("Exam results save error:", err);
       const message =
         err.response?.data?.message || err.message || "Sınav sonuçları kaydedilirken hata oluştu.";
-      alert(message);
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -274,12 +422,13 @@ export default function ExamDetailPage() {
       });
       setCsvFile(null);
       await loadExam();
-      alert("CSV import işlemi tamamlandı.");
+      toast.success("CSV import işlemi tamamlandı.");
     } catch (err: any) {
-      console.error("CSV import error:", err);
+      logger.error("CSV import error:", err);
       const message =
         err.response?.data?.message || err.message || "CSV dosyası içe aktarılırken hata oluştu.";
       setImportError(message);
+      toast.error(message);
     } finally {
       setImporting(false);
     }
@@ -420,6 +569,42 @@ export default function ExamDetailPage() {
                   />
                   <span>Sınavı tamamlandı olarak işaretle</span>
                 </label>
+                {(exam.examType === "yazili" || exam.examType === "written") && (
+                  <button
+                    onClick={() => setShowStudentSelector(!showStudentSelector)}
+                    className="px-4 py-2 border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50"
+                  >
+                    📋 Sınıftan Öğrenci Seç
+                  </button>
+                )}
+                {(exam.examType === "uygulama" || exam.examType === "practical") && (
+                  <>
+                    <button
+                      onClick={loadEligibleStudentsForPractical}
+                      disabled={loadingStudents}
+                      className="px-4 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-50 disabled:opacity-50"
+                    >
+                      {loadingStudents ? "Yükleniyor..." : "✅ Yazılıyı Geçenleri Getir"}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!confirm("Pratik sınavı geçen tüm öğrenciler için otomatik sertifika oluşturulsun mu?")) {
+                          return;
+                        }
+                        try {
+                          const response = await api.post(`/exams/practical/${examId}/auto-generate-certificates`);
+                          toast.success(`Başarılı! ${response.data.certificatesGenerated} sertifika oluşturuldu.`);
+                        } catch (error: any) {
+                          const message = error.response?.data?.message || "Sertifika oluşturulurken hata oluştu.";
+                          toast.error(message);
+                        }
+                      }}
+                      className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700"
+                    >
+                      🎓 Sertifika Oluştur
+                    </button>
+                  </>
+                )}
                 <button
                   onClick={handleAddResult}
                   className="px-4 py-2 border border-purple-300 text-purple-700 rounded-lg hover:bg-purple-50"
@@ -485,23 +670,36 @@ export default function ExamDetailPage() {
                           max={100}
                           step={0.01}
                           value={result.score}
-                          onChange={(e) =>
-                            handleResultChange(result.id, "score", parseFloat(e.target.value))
-                          }
-                          className="w-24 px-2 py-1 border border-gray-300 rounded"
+                          onChange={(e) => {
+                            const score = parseFloat(e.target.value) || 0;
+                            const pass = score >= 70; // 70 üstü geçer
+                            handleResultChange(result.id, "score", score);
+                            handleResultChange(result.id, "pass", pass);
+                          }}
+                          className={`w-24 px-2 py-1 border rounded ${
+                            result.score >= 70
+                              ? "border-green-500 bg-green-50"
+                              : result.score > 0
+                              ? "border-red-500 bg-red-50"
+                              : "border-gray-300"
+                          }`}
                         />
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-700">
-                        <select
-                          value={result.pass ? "passed" : "failed"}
-                          onChange={(e) =>
-                            handleResultChange(result.id, "pass", e.target.value === "passed")
-                          }
-                          className="px-3 py-1 border border-gray-300 rounded"
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                            result.pass
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-700"
+                          }`}
                         >
-                          <option value="passed">Geçti</option>
-                          <option value="failed">Kaldı</option>
-                        </select>
+                          {result.pass ? "✅ Geçti" : "❌ Kaldı"}
+                        </span>
+                        {result.score > 0 && result.score < 70 && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            (70 gerekli)
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-700">
                         <input
@@ -509,9 +707,12 @@ export default function ExamDetailPage() {
                           min={1}
                           max={4}
                           value={result.attemptNo}
-                          onChange={(e) =>
-                            handleResultChange(result.id, "attemptNo", parseInt(e.target.value))
-                          }
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value, 10);
+                            if (!isNaN(value) && value >= 1 && value <= 4) {
+                              handleResultChange(result.id, "attemptNo", value);
+                            }
+                          }}
                           className="w-16 px-2 py-1 border border-gray-300 rounded"
                         />
                       </td>
@@ -555,7 +756,7 @@ export default function ExamDetailPage() {
                 href="#"
                 onClick={(e) => {
                   e.preventDefault();
-                  alert(
+                  toast.info(
                     "Beklenen CSV formatı: studentId,score,pass(optional),attemptNo(optional),notes(optional)"
                   );
                 }}
@@ -581,6 +782,163 @@ export default function ExamDetailPage() {
               {importError && <span className="text-sm text-red-600">{importError}</span>}
             </form>
           </section>
+
+          {/* Sınıf Seçimi Modal */}
+          {showStudentSelector && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+                <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+                  <h3 className="text-2xl font-bold text-gray-900">Sınıftan Öğrenci Seç</h3>
+                  <button
+                    onClick={() => {
+                      setShowStudentSelector(false);
+                      setAvailableStudents([]);
+                      setSelectedGroupIds([]);
+                    }}
+                    className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Sınıfları Seçin (Çoklu seçim yapabilirsiniz)
+                    </label>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                      {groups.map((group) => (
+                        <label
+                          key={group.id}
+                          className={`flex items-center p-2 border-2 rounded-lg cursor-pointer transition-all ${
+                            selectedGroupIds.includes(group.id)
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedGroupIds.includes(group.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedGroupIds([...selectedGroupIds, group.id]);
+                              } else {
+                                setSelectedGroupIds(selectedGroupIds.filter((id) => id !== group.id));
+                              }
+                            }}
+                            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded mr-2"
+                          />
+                          <span className="text-sm text-gray-700">{group.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <button
+                      onClick={loadStudentsFromGroups}
+                      disabled={loadingStudents || selectedGroupIds.length === 0}
+                      className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loadingStudents ? "Yükleniyor..." : "Öğrencileri Yükle"}
+                    </button>
+                  </div>
+
+                  {availableStudents.length > 0 && (
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <h4 className="text-lg font-semibold text-gray-900">
+                          Öğrenciler ({availableStudents.filter((s) => s.selected).length} seçili)
+                        </h4>
+                        <button
+                          onClick={() => {
+                            setAvailableStudents((prev) =>
+                              prev.map((s) => ({ ...s, selected: !s.selected }))
+                            );
+                          }}
+                          className="text-sm text-blue-600 hover:text-blue-800"
+                        >
+                          Tümünü Seç/Kaldır
+                        </button>
+                      </div>
+                      <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50 sticky top-0">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">
+                                <input
+                                  type="checkbox"
+                                  checked={availableStudents.every((s) => s.selected)}
+                                  onChange={(e) => {
+                                    setAvailableStudents((prev) =>
+                                      prev.map((s) => ({ ...s, selected: e.target.checked }))
+                                    );
+                                  }}
+                                  className="h-4 w-4"
+                                />
+                              </th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">
+                                Öğrenci
+                              </th>
+                              <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">
+                                TC Kimlik No
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {availableStudents.map((student) => (
+                              <tr
+                                key={student.id}
+                                className={student.selected ? "bg-blue-50" : ""}
+                              >
+                                <td className="px-4 py-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={student.selected || false}
+                                    onChange={(e) => {
+                                      setAvailableStudents((prev) =>
+                                        prev.map((s) =>
+                                          s.id === student.id
+                                            ? { ...s, selected: e.target.checked }
+                                            : s
+                                        )
+                                      );
+                                    }}
+                                    className="h-4 w-4"
+                                  />
+                                </td>
+                                <td className="px-4 py-2 text-sm text-gray-900">
+                                  {student.firstName} {student.lastName}
+                                </td>
+                                <td className="px-4 py-2 text-sm text-gray-500">
+                                  {maskTc(student.tcKimlikNo)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="flex justify-end gap-3 mt-4">
+                        <button
+                          onClick={() => {
+                            setShowStudentSelector(false);
+                            setAvailableStudents([]);
+                            setSelectedGroupIds([]);
+                          }}
+                          className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                        >
+                          İptal
+                        </button>
+                        <button
+                          onClick={handleAddSelectedStudents}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                        >
+                          Seçilenleri Ekle ({availableStudents.filter((s) => s.selected).length})
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

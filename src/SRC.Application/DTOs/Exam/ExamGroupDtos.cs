@@ -18,7 +18,7 @@ public class GroupInfoDto
 public class GroupExamResultItemDto
 {
     public int ExamId { get; set; }
-    public int CourseId { get; set; }
+    public int MebGroupId { get; set; }
     public string CourseName { get; set; } = string.Empty;
     public string ExamType { get; set; } = string.Empty;
     public DateTime ExamDate { get; set; }
@@ -57,7 +57,7 @@ public class PracticalEligibilityDto
     public string TcKimlikNo { get; set; } = string.Empty;
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
-    public int CourseId { get; set; }
+    public int MebGroupId { get; set; }
     public string CourseName { get; set; } = string.Empty;
     public bool WrittenPassed { get; set; }
     public DateTime? WrittenExamDate { get; set; }

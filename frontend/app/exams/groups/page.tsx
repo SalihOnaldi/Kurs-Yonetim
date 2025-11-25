@@ -31,7 +31,7 @@ interface GroupInfo {
 
 interface GroupExamResultItem {
   examId: number;
-  courseId: number;
+  mebGroupId: number;
   courseName: string;
   examType: string;
   examDate: string;
@@ -67,7 +67,7 @@ interface PracticalEligibility {
   tcKimlikNo: string;
   firstName: string;
   lastName: string;
-  courseId: number;
+  mebGroupId: number;
   courseName: string;
   writtenPassed: boolean;
   writtenExamDate?: string | null;

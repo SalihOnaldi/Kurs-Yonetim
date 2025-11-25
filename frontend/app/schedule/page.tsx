@@ -83,7 +83,7 @@ export default function SchedulePage() {
       const params = new URLSearchParams();
       params.append("startDate", startDate.toISOString());
       params.append("endDate", endDate.toISOString());
-      if (courseFilter.trim()) params.append("courseId", courseFilter.trim());
+      if (courseFilter.trim()) params.append("mebGroupId", courseFilter.trim());
       if (branchFilter.trim()) params.append("branch", branchFilter.trim());
       if (instructorFilter.trim()) params.append("instructorId", instructorFilter.trim());
 

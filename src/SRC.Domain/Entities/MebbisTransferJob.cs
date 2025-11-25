@@ -3,7 +3,7 @@ namespace SRC.Domain.Entities;
 public class MebbisTransferJob : TenantEntity
 {
     public int Id { get; set; }
-    public int CourseId { get; set; }
+    public int MebGroupId { get; set; } // CourseId yerine
     public string Mode { get; set; } = "dry_run"; // dry_run, live
     public string Status { get; set; } = "pending"; // pending, running, completed, failed
     public int SuccessCount { get; set; }
@@ -15,7 +15,7 @@ public class MebbisTransferJob : TenantEntity
     public DateTime? CompletedAt { get; set; }
 
     // Navigation properties
-    public Course Course { get; set; } = null!;
+    public MebGroup MebGroup { get; set; } = null!; // Course yerine
     public ICollection<MebbisTransferItem> TransferItems { get; set; } = new List<MebbisTransferItem>();
 }
 

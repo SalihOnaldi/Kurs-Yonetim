@@ -235,7 +235,7 @@ namespace SRC.Infrastructure.Migrations
                     b.ToTable("AuditLogs");
                 });
 
-            modelBuilder.Entity("SRC.Domain.Entities.Course", b =>
+            modelBuilder.Entity("SRC.Domain.Entities.Certificate", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -243,32 +243,33 @@ namespace SRC.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTime?>("ApprovalAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ApprovalNotes")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<string>("CertificateNumber")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<bool>("IsMixed")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("MebApprovalStatus")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
+                    b.Property<DateTime>("IssueDate")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("MebGroupId")
                         .HasColumnType("int");
 
-                    b.Property<string>("MixedTypes")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("PlannedHours")
+                    b.Property<int>("PracticalExamId")
                         .HasColumnType("int");
 
-                    b.Property<int>("SrcType")
+                    b.Property<string>("RevokeReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StudentId")
                         .HasColumnType("int");
 
                     b.Property<string>("TenantId")
@@ -278,17 +279,27 @@ namespace SRC.Infrastructure.Migrations
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("WrittenExamId")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("MebGroupId");
 
-                    b.HasIndex("TenantId", "CreatedAt");
+                    b.HasIndex("PracticalExamId");
 
-                    b.HasIndex("TenantId", "MebApprovalStatus");
+                    b.HasIndex("StudentId");
+
+                    b.HasIndex("WrittenExamId");
+
+                    b.HasIndex("TenantId", "CertificateNumber")
+                        .IsUnique();
 
                     b.HasIndex("TenantId", "MebGroupId");
 
-                    b.ToTable("Courses");
+                    b.HasIndex("TenantId", "StudentId");
+
+                    b.ToTable("Certificates");
                 });
 
             modelBuilder.Entity("SRC.Domain.Entities.Enrollment", b =>
@@ -302,9 +313,6 @@ namespace SRC.Infrastructure.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("CourseId")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -314,6 +322,9 @@ namespace SRC.Infrastructure.Migrations
                     b.Property<decimal>("Fee")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("MebGroupId")
+                        .HasColumnType("int");
 
                     b.Property<string>("Notes")
                         .HasColumnType("nvarchar(max)");
@@ -338,11 +349,11 @@ namespace SRC.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CourseId");
+                    b.HasIndex("MebGroupId");
 
                     b.HasIndex("StudentId");
 
-                    b.HasIndex("TenantId", "CourseId");
+                    b.HasIndex("TenantId", "MebGroupId");
 
                     b.ToTable("Enrollments");
                 });
@@ -355,9 +366,6 @@ namespace SRC.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("CourseId")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -367,6 +375,9 @@ namespace SRC.Infrastructure.Migrations
                     b.Property<string>("ExamType")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("MebGroupId")
+                        .HasColumnType("int");
 
                     b.Property<string>("MebSessionCode")
                         .HasColumnType("nvarchar(max)");
@@ -387,7 +398,7 @@ namespace SRC.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CourseId");
+                    b.HasIndex("MebGroupId");
 
                     b.HasIndex("TenantId", "ExamDate");
 
@@ -494,6 +505,12 @@ namespace SRC.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTime?>("ApprovalAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ApprovalNotes")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Branch")
                         .HasColumnType("nvarchar(450)");
 
@@ -509,7 +526,23 @@ namespace SRC.Infrastructure.Migrations
                     b.Property<int>("GroupNo")
                         .HasColumnType("int");
 
+                    b.Property<bool>("IsMixed")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MebApprovalStatus")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("MixedTypes")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("Month")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PlannedHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SrcType")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("StartDate")
@@ -530,6 +563,8 @@ namespace SRC.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "MebApprovalStatus");
 
                     b.HasIndex("TenantId", "Year", "Month", "GroupNo", "Branch")
                         .IsUnique()
@@ -647,9 +682,6 @@ namespace SRC.Infrastructure.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("CourseId")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -660,6 +692,9 @@ namespace SRC.Infrastructure.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<int>("FailureCount")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MebGroupId")
                         .HasColumnType("int");
 
                     b.Property<string>("Mode")
@@ -685,9 +720,56 @@ namespace SRC.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CourseId");
+                    b.HasIndex("MebGroupId");
 
                     b.ToTable("MebbisTransferJobs");
+                });
+
+            modelBuilder.Entity("SRC.Domain.Entities.PasswordResetToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsUsed")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("Username", "Token", "IsUsed");
+
+                    b.ToTable("PasswordResetTokens");
                 });
 
             modelBuilder.Entity("SRC.Domain.Entities.Payment", b =>
@@ -835,9 +917,6 @@ namespace SRC.Infrastructure.Migrations
                     b.Property<string>("ClassroomName")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("CourseId")
-                        .HasColumnType("int");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
@@ -845,6 +924,9 @@ namespace SRC.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("InstructorId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MebGroupId")
                         .HasColumnType("int");
 
                     b.Property<string>("Notes")
@@ -865,11 +947,65 @@ namespace SRC.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CourseId");
-
                     b.HasIndex("InstructorId");
 
+                    b.HasIndex("MebGroupId");
+
                     b.ToTable("ScheduleSlots");
+                });
+
+            modelBuilder.Entity("SRC.Domain.Entities.SrcCourseTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MixedTypes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RequiredHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SrcType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SubjectCode")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("SubjectName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("TotalRequiredHours")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "SrcType", "Order");
+
+                    b.HasIndex("TenantId", "SrcType", "SubjectCode")
+                        .IsUnique();
+
+                    b.ToTable("SrcCourseTemplates");
                 });
 
             modelBuilder.Entity("SRC.Domain.Entities.Student", b =>
@@ -916,6 +1052,10 @@ namespace SRC.Infrastructure.Migrations
                     b.Property<string>("Phone")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("SelectedSrcCourses")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<string>("TcKimlikNo")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -948,6 +1088,15 @@ namespace SRC.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("CriminalRecordDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CriminalRecordIssuingInstitution")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CriminalRecordNumber")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime?>("DocDate")
                         .HasColumnType("datetime2");
 
@@ -956,6 +1105,15 @@ namespace SRC.Infrastructure.Migrations
 
                     b.Property<string>("DocumentType")
                         .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("EducationDocDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EducationDocIssuingInstitution")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EducationDocNumber")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("FileUrl")
@@ -1192,22 +1350,46 @@ namespace SRC.Infrastructure.Migrations
                     b.Navigation("Student");
                 });
 
-            modelBuilder.Entity("SRC.Domain.Entities.Course", b =>
+            modelBuilder.Entity("SRC.Domain.Entities.Certificate", b =>
                 {
                     b.HasOne("SRC.Domain.Entities.MebGroup", "MebGroup")
-                        .WithMany("Courses")
+                        .WithMany("Certificates")
                         .HasForeignKey("MebGroupId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SRC.Domain.Entities.Exam", "PracticalExam")
+                        .WithMany()
+                        .HasForeignKey("PracticalExamId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SRC.Domain.Entities.Student", "Student")
+                        .WithMany("Certificates")
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SRC.Domain.Entities.Exam", "WrittenExam")
+                        .WithMany()
+                        .HasForeignKey("WrittenExamId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("MebGroup");
+
+                    b.Navigation("PracticalExam");
+
+                    b.Navigation("Student");
+
+                    b.Navigation("WrittenExam");
                 });
 
             modelBuilder.Entity("SRC.Domain.Entities.Enrollment", b =>
                 {
-                    b.HasOne("SRC.Domain.Entities.Course", "Course")
+                    b.HasOne("SRC.Domain.Entities.MebGroup", "MebGroup")
                         .WithMany("Enrollments")
-                        .HasForeignKey("CourseId")
+                        .HasForeignKey("MebGroupId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -1217,20 +1399,20 @@ namespace SRC.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.Navigation("Course");
+                    b.Navigation("MebGroup");
 
                     b.Navigation("Student");
                 });
 
             modelBuilder.Entity("SRC.Domain.Entities.Exam", b =>
                 {
-                    b.HasOne("SRC.Domain.Entities.Course", "Course")
+                    b.HasOne("SRC.Domain.Entities.MebGroup", "MebGroup")
                         .WithMany("Exams")
-                        .HasForeignKey("CourseId")
+                        .HasForeignKey("MebGroupId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Course");
+                    b.Navigation("MebGroup");
                 });
 
             modelBuilder.Entity("SRC.Domain.Entities.ExamResult", b =>
@@ -1273,20 +1455,21 @@ namespace SRC.Infrastructure.Migrations
 
             modelBuilder.Entity("SRC.Domain.Entities.MebbisTransferJob", b =>
                 {
-                    b.HasOne("SRC.Domain.Entities.Course", "Course")
+                    b.HasOne("SRC.Domain.Entities.MebGroup", "MebGroup")
                         .WithMany("MebbisTransferJobs")
-                        .HasForeignKey("CourseId")
+                        .HasForeignKey("MebGroupId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Course");
+                    b.Navigation("MebGroup");
                 });
 
             modelBuilder.Entity("SRC.Domain.Entities.Payment", b =>
                 {
                     b.HasOne("SRC.Domain.Entities.Enrollment", "Enrollment")
                         .WithMany()
-                        .HasForeignKey("EnrollmentId");
+                        .HasForeignKey("EnrollmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("SRC.Domain.Entities.Student", "Student")
                         .WithMany("Payments")
@@ -1318,19 +1501,19 @@ namespace SRC.Infrastructure.Migrations
 
             modelBuilder.Entity("SRC.Domain.Entities.ScheduleSlot", b =>
                 {
-                    b.HasOne("SRC.Domain.Entities.Course", "Course")
-                        .WithMany("ScheduleSlots")
-                        .HasForeignKey("CourseId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("SRC.Domain.Entities.User", "Instructor")
                         .WithMany()
                         .HasForeignKey("InstructorId");
 
-                    b.Navigation("Course");
+                    b.HasOne("SRC.Domain.Entities.MebGroup", "MebGroup")
+                        .WithMany("ScheduleSlots")
+                        .HasForeignKey("MebGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Instructor");
+
+                    b.Navigation("MebGroup");
                 });
 
             modelBuilder.Entity("SRC.Domain.Entities.StudentDocument", b =>
@@ -1363,17 +1546,6 @@ namespace SRC.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("SRC.Domain.Entities.Course", b =>
-                {
-                    b.Navigation("Enrollments");
-
-                    b.Navigation("Exams");
-
-                    b.Navigation("MebbisTransferJobs");
-
-                    b.Navigation("ScheduleSlots");
-                });
-
             modelBuilder.Entity("SRC.Domain.Entities.Enrollment", b =>
                 {
                     b.Navigation("MebbisTransferItems");
@@ -1386,7 +1558,15 @@ namespace SRC.Infrastructure.Migrations
 
             modelBuilder.Entity("SRC.Domain.Entities.MebGroup", b =>
                 {
-                    b.Navigation("Courses");
+                    b.Navigation("Certificates");
+
+                    b.Navigation("Enrollments");
+
+                    b.Navigation("Exams");
+
+                    b.Navigation("MebbisTransferJobs");
+
+                    b.Navigation("ScheduleSlots");
                 });
 
             modelBuilder.Entity("SRC.Domain.Entities.MebbisTransferJob", b =>
@@ -1402,6 +1582,8 @@ namespace SRC.Infrastructure.Migrations
             modelBuilder.Entity("SRC.Domain.Entities.Student", b =>
                 {
                     b.Navigation("Attendances");
+
+                    b.Navigation("Certificates");
 
                     b.Navigation("Documents");
 

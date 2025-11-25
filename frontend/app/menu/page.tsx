@@ -54,11 +54,31 @@ export default function MainMenuPage() {
       return;
     }
 
+    // Admin kullanıcısı şube ekranına erişemez
+    const userStr = localStorage.getItem("user");
+    if (userStr) {
+      try {
+        const parsedUser = JSON.parse(userStr);
+        if (parsedUser?.role === "PlatformOwner") {
+          router.push("/hq/dashboard");
+          return;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     api
       .get("/auth/me")
       .then((response) => {
+        const userData = response.data;
+        // Admin kullanıcısı şube ekranına erişemez
+        if (userData?.role === "PlatformOwner") {
+          router.push("/hq/dashboard");
+          return;
+        }
         setAuthorized(true);
-        setRole(response.data?.role ?? null);
+        setRole(userData?.role ?? null);
       })
       .catch(() => router.push("/login"))
       .finally(() => setLoading(false));

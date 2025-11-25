@@ -31,8 +31,20 @@ public class PortalController : ControllerBase
             return BadRequest(new { message = "TC Kimlik numarası gereklidir." });
         }
 
+        // TC Kimlik No validasyonu (11 haneli olmalı)
         var tc = request.TcKimlikNo.Trim();
+        if (tc.Length != 11 || !tc.All(char.IsDigit))
+        {
+            return BadRequest(new { message = "Geçersiz TC Kimlik numarası formatı." });
+        }
+
         var email = request.Email?.Trim().ToLower();
+        
+        // Email validasyonu (eğer sağlanmışsa)
+        if (!string.IsNullOrWhiteSpace(email) && !email.Contains('@'))
+        {
+            return BadRequest(new { message = "Geçersiz e-posta adresi formatı." });
+        }
 
         var studentQuery = _context.Students.AsNoTracking().Where(s => s.TcKimlikNo == tc);
         if (!string.IsNullOrWhiteSpace(email))
@@ -51,6 +63,8 @@ public class PortalController : ControllerBase
 
         if (student == null)
         {
+            // Güvenlik: Hata mesajını belirsiz tut (timing attack önleme)
+            await Task.Delay(Random.Shared.Next(100, 300), cancellationToken);
             return NotFound(new { message = "Kursiyer bilgileri doğrulanamadı." });
         }
 
@@ -95,7 +109,8 @@ public class PortalController : ControllerBase
         var attendanceStart = DateTime.UtcNow;
         var upcomingLessons = await _context.ScheduleSlots
             .AsNoTracking()
-            .Where(s => s.Course.Enrollments.Any(e => e.StudentId == studentId))
+            .Include(s => s.MebGroup)
+            .Where(s => s.MebGroup.Enrollments.Any(e => e.StudentId == studentId))
             .Where(s => s.StartTime >= attendanceStart)
             .OrderBy(s => s.StartTime)
             .Take(5)
@@ -105,7 +120,7 @@ public class PortalController : ControllerBase
                 StartTime = s.StartTime,
                 EndTime = s.EndTime,
                 Subject = s.Subject,
-                CourseLabel = $"SRC{s.Course.SrcType} {s.Course.MebGroup.Year}-{s.Course.MebGroup.Month:00} GRUP {s.Course.MebGroup.GroupNo}"
+                CourseLabel = $"SRC{s.MebGroup.SrcType} {s.MebGroup.Year}-{s.MebGroup.Month:00} GRUP {s.MebGroup.GroupNo}"
             })
             .ToListAsync(cancellationToken);
 
@@ -167,7 +182,7 @@ public class PortalController : ControllerBase
                 StartTime = a.ScheduleSlot.StartTime,
                 EndTime = a.ScheduleSlot.EndTime,
                 Subject = a.ScheduleSlot.Subject,
-                CourseLabel = "SRC" + a.ScheduleSlot.Course.SrcType,
+                CourseLabel = "SRC" + a.ScheduleSlot.MebGroup.SrcType,
                 MarkedAt = a.MarkedAt
             })
             .ToListAsync(cancellationToken);

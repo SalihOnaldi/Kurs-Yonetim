@@ -11,7 +11,7 @@ interface CourseOption {
 
 interface TransferJob {
   id: number;
-  courseId: number;
+  mebGroupId: number;
   mode: string;
   status: string;
   successCount: number;
@@ -20,13 +20,12 @@ interface TransferJob {
   startedAt: string;
   completedAt?: string | null;
   createdAt: string;
-  course: {
+  group: {
     id: number;
     srcType: number;
-    group: {
-      year: number;
-      month: number;
-      groupNo: number;
+    year: number;
+    month: number;
+    groupNo: number;
       branch?: string | null;
     };
   };
@@ -96,7 +95,7 @@ export default function MebbisTransferPage() {
     try {
       setLoading(true);
       setListError("");
-      const params = selectedCourse ? `?courseId=${selectedCourse}` : "";
+      const params = selectedCourse ? `?mebGroupId=${selectedCourse}` : "";
       const response = await api.get<TransferJob[]>(`/mebbis-transfer${params}`);
       setJobs(response.data || []);
     } catch (err: any) {
@@ -113,18 +112,18 @@ export default function MebbisTransferPage() {
 
   const loadCourses = async () => {
     try {
-      const response = await api.get("/courses?page=1&pageSize=200");
+      const response = await api.get("/courses/groups?page=1&pageSize=200");
       const data = Array.isArray(response.data)
         ? (response.data as any[])
         : ((response.data as any)?.items as any[] | undefined) || [];
       setCourses(
-        data.map((course) => ({
-          id: course.id,
-          name: course.name || `SRC${course.srcType} - ${course.mebGroupName || ""}`,
+        data.map((group) => ({
+          id: group.id,
+          name: group.name || `SRC${group.srcType} - ${group.branch || ""}`,
         }))
       );
     } catch (err: any) {
-      console.error("Course list load error:", err);
+      console.error("Group list load error:", err);
     }
   };
 
@@ -387,10 +386,10 @@ export default function MebbisTransferPage() {
               ) : jobDetail ? (
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-700">
-                    <DetailItem label="Kurs">
-                      SRC{jobDetail.course.srcType} • {jobDetail.course.group.year}-
-                      {jobDetail.course.group.month}-GRUP {jobDetail.course.group.groupNo}
-                      {jobDetail.course.group.branch ? ` (${jobDetail.course.group.branch})` : ""}
+                    <DetailItem label="Sınıf">
+                      SRC{jobDetail.group.srcType} • {jobDetail.group.year}-
+                      {jobDetail.group.month}-GRUP {jobDetail.group.groupNo}
+                      {jobDetail.group.branch ? ` (${jobDetail.group.branch})` : ""}
                     </DetailItem>
                     <DetailItem label="Mod">
                       {jobDetail.mode === "live" ? "Canlı Aktarım" : "Dry Run"}

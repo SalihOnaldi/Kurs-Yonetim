@@ -15,10 +15,10 @@ public class FakeMebbisClient : IMebbisClient
         _logger = logger;
     }
 
-    public async Task<MebbisClientResult> SendCourseAsync(int courseId, CancellationToken cancellationToken = default)
+    public async Task<MebbisClientResult> SendCourseAsync(int mebGroupId, CancellationToken cancellationToken = default)
     {
-        await SimulateAsync("course", courseId, cancellationToken);
-        return BuildResult("Kurs aktarımı başarıyla tamamlandı.", new { courseId });
+        await SimulateAsync("group", mebGroupId, cancellationToken);
+        return BuildResult("Sınıf aktarımı başarıyla tamamlandı.", new { mebGroupId });
     }
 
     public async Task<MebbisClientResult> SendEnrollmentAsync(int enrollmentId, CancellationToken cancellationToken = default)

@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SRC.Infrastructure.Data;
+using SRC.Infrastructure.Utilities;
 using SRC.Presentation.Api.Utilities;
 using System.Globalization;
 
@@ -41,39 +42,36 @@ public class ReportsController : ControllerBase
             case "lesson_schedule":
             case "schedule":
                 {
-                    if (!TryGetIntParam(request.Parameters, "courseId", out var courseId))
+                    if (!TryGetIntParam(request.Parameters, "mebGroupId", out var mebGroupId))
                     {
-                        return BadRequest(new { message = "Ders programı raporu için courseId gereklidir." });
+                        return BadRequest(new { message = "Ders programı raporu için mebGroupId gereklidir." });
                     }
 
-                    var course = await _context.Courses
+                    var group = await _context.MebGroups
                         .AsNoTracking()
-                        .Where(c => c.Id == courseId)
-                        .Select(c => new
+                        .Where(g => g.Id == mebGroupId)
+                        .Select(g => new
                         {
-                            c.Id,
-                            c.SrcType,
-                            c.IsMixed,
-                            Group = new
-                            {
-                                c.MebGroup.Year,
-                                c.MebGroup.Month,
-                                c.MebGroup.GroupNo,
-                                c.MebGroup.Branch,
-                                c.MebGroup.StartDate,
-                                c.MebGroup.EndDate
-                            }
+                            g.Id,
+                            g.SrcType,
+                            g.IsMixed,
+                            g.Year,
+                            g.Month,
+                            g.GroupNo,
+                            g.Branch,
+                            g.StartDate,
+                            g.EndDate
                         })
                         .FirstOrDefaultAsync();
 
-                    if (course == null)
+                    if (group == null)
                     {
-                        return NotFound(new { message = "Kurs bulunamadı." });
+                        return NotFound(new { message = "Sınıf bulunamadı." });
                     }
 
                     var slots = await _context.ScheduleSlots
                         .AsNoTracking()
-                        .Where(s => s.CourseId == courseId)
+                        .Where(s => s.MebGroupId == mebGroupId)
                         .OrderBy(s => s.StartTime)
                         .Select(s => new
                         {
@@ -89,7 +87,7 @@ public class ReportsController : ControllerBase
                     data = slots;
                     meta = new
                     {
-                        Course = course,
+                        Group = group,
                         TotalSlots = slots.Count
                     };
                     break;
@@ -97,14 +95,15 @@ public class ReportsController : ControllerBase
 
             case "attendance":
                 {
-                    if (!TryGetIntParam(request.Parameters, "courseId", out var courseId))
+                    if (!TryGetIntParam(request.Parameters, "mebGroupId", out var mebGroupId))
                     {
-                        return BadRequest(new { message = "Yoklama raporu için courseId gereklidir." });
+                        return BadRequest(new { message = "Yoklama raporu için mebGroupId gereklidir." });
                     }
 
                     var attendanceQuery = _context.Attendances
                         .AsNoTracking()
-                        .Where(a => a.ScheduleSlot.CourseId == courseId);
+                        .Include(a => a.ScheduleSlot)
+                        .Where(a => a.ScheduleSlot.MebGroupId == mebGroupId);
 
                     DateTime? startFilter = null;
                     if (TryGetDateParam(request.Parameters, "startDate", out var startDate))
@@ -166,6 +165,7 @@ public class ReportsController : ControllerBase
 
                     var examInfo = await _context.Exams
                         .AsNoTracking()
+                        .Include(e => e.MebGroup)
                         .Where(e => e.Id == examId)
                         .Select(e => new
                         {
@@ -174,12 +174,12 @@ public class ReportsController : ControllerBase
                             e.ExamDate,
                             e.MebSessionCode,
                             e.Status,
-                            Course = new
+                            Group = new
                             {
-                                e.Course.Id,
-                                e.Course.SrcType,
-                                e.Course.MebGroup.GroupNo,
-                                Branch = e.Course.MebGroup.Branch
+                                e.MebGroup.Id,
+                                e.MebGroup.SrcType,
+                                e.MebGroup.GroupNo,
+                                Branch = e.MebGroup.Branch
                             }
                         })
                         .FirstOrDefaultAsync();
@@ -222,7 +222,7 @@ public class ReportsController : ControllerBase
                             examInfo.MebSessionCode,
                             examInfo.Status
                         },
-                        Course = examInfo.Course,
+                        Group = examInfo.Group,
                         Stats = new
                         {
                             Total = total,
@@ -236,36 +236,34 @@ public class ReportsController : ControllerBase
 
             case "certificates":
                 {
-                    if (!TryGetIntParam(request.Parameters, "courseId", out var courseId))
+                    if (!TryGetIntParam(request.Parameters, "mebGroupId", out var mebGroupId))
                     {
-                        return BadRequest(new { message = "Sertifika listesi için courseId gereklidir." });
+                        return BadRequest(new { message = "Sertifika listesi için mebGroupId gereklidir." });
                     }
 
-                    var courseInfo = await _context.Courses
+                    var groupInfo = await _context.MebGroups
                         .AsNoTracking()
-                        .Where(c => c.Id == courseId)
-                        .Select(c => new
+                        .Where(g => g.Id == mebGroupId)
+                        .Select(g => new
                         {
-                            c.Id,
-                            c.SrcType,
-                            Group = new
-                            {
-                                c.MebGroup.Year,
-                                c.MebGroup.Month,
-                                c.MebGroup.GroupNo,
-                                c.MebGroup.Branch
-                            }
+                            g.Id,
+                            g.SrcType,
+                            g.Year,
+                            g.Month,
+                            g.GroupNo,
+                            g.Branch
                         })
                         .FirstOrDefaultAsync();
 
-                    if (courseInfo == null)
+                    if (groupInfo == null)
                     {
-                        return NotFound(new { message = "Kurs bulunamadı." });
+                        return NotFound(new { message = "Sınıf bulunamadı." });
                     }
 
                     var attemptCounts = await _context.ExamResults
                         .AsNoTracking()
-                        .Where(r => r.Exam.CourseId == courseId)
+                        .Include(er => er.Exam)
+                        .Where(r => r.Exam.MebGroupId == mebGroupId)
                         .GroupBy(r => r.StudentId)
                         .Select(g => new
                         {
@@ -276,7 +274,8 @@ public class ReportsController : ControllerBase
 
                     var passedResults = await _context.ExamResults
                         .AsNoTracking()
-                        .Where(r => r.Exam.CourseId == courseId && r.Pass)
+                        .Include(er => er.Exam)
+                        .Where(r => r.Exam.MebGroupId == mebGroupId && r.Pass)
                         .Select(r => new
                         {
                             r.StudentId,
@@ -310,7 +309,7 @@ public class ReportsController : ControllerBase
                     data = passedStudents;
                     meta = new
                     {
-                        Course = courseInfo,
+                        Group = groupInfo,
                         TotalCertificates = passedStudents.Count
                     };
                     break;
@@ -318,12 +317,12 @@ public class ReportsController : ControllerBase
 
             case "payments":
                 {
-                    TryGetIntParam(request.Parameters, "courseId", out var courseId);
+                    TryGetIntParam(request.Parameters, "mebGroupId", out var mebGroupId);
                     TryGetIntParam(request.Parameters, "studentId", out var studentId);
 
-                    if (courseId == 0 && studentId == 0)
+                    if (mebGroupId == 0 && studentId == 0)
                     {
-                        return BadRequest(new { message = "Ödeme raporu için courseId veya studentId gereklidir." });
+                        return BadRequest(new { message = "Ödeme raporu için mebGroupId veya studentId gereklidir." });
                     }
 
                     var paymentsQuery = _context.Payments
@@ -335,9 +334,9 @@ public class ReportsController : ControllerBase
                         paymentsQuery = paymentsQuery.Where(p => p.StudentId == studentId);
                     }
 
-                    if (courseId != 0)
+                    if (mebGroupId != 0)
                     {
-                        paymentsQuery = paymentsQuery.Where(p => p.Enrollment != null && p.Enrollment.CourseId == courseId);
+                        paymentsQuery = paymentsQuery.Where(p => p.Enrollment != null && p.Enrollment.MebGroupId == mebGroupId);
                     }
 
                     var payments = await paymentsQuery
@@ -352,12 +351,12 @@ public class ReportsController : ControllerBase
                                 p.Student.LastName,
                                 p.Student.TcKimlikNo
                             },
-                            Course = p.Enrollment != null ? new
+                            Group = p.Enrollment != null ? new
                             {
-                                p.Enrollment.Course.Id,
-                                p.Enrollment.Course.SrcType,
-                                GroupNo = p.Enrollment.Course.MebGroup.GroupNo,
-                                Branch = p.Enrollment.Course.MebGroup.Branch
+                                p.Enrollment.MebGroup.Id,
+                                p.Enrollment.MebGroup.SrcType,
+                                GroupNo = p.Enrollment.MebGroup.GroupNo,
+                                Branch = p.Enrollment.MebGroup.Branch
                             } : null,
                             p.Amount,
                             p.PenaltyAmount,

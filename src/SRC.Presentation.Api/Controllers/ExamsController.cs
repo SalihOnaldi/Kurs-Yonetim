@@ -8,9 +8,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SRC.Application.DTOs.Exam;
+using SRC.Application.Interfaces;
 using SRC.Domain.Entities;
 using SRC.Infrastructure.Data;
-using SRC.Presentation.Api.Utilities;
+using SRC.Infrastructure.Utilities;
 
 namespace SRC.Presentation.Api.Controllers;
 
@@ -20,15 +21,17 @@ namespace SRC.Presentation.Api.Controllers;
 public class ExamsController : ControllerBase
 {
     private readonly SrcDbContext _context;
+    private readonly ICertificateService _certificateService;
 
-    public ExamsController(SrcDbContext context)
+    public ExamsController(SrcDbContext context, ICertificateService certificateService)
     {
         _context = context;
+        _certificateService = certificateService;
     }
 
     [HttpGet]
     public async Task<ActionResult> GetAll(
-        [FromQuery] int? courseId,
+        [FromQuery] int? mebGroupId,
         [FromQuery] int? srcType,
         [FromQuery] string? examType,
         [FromQuery] string? status,
@@ -43,16 +46,17 @@ public class ExamsController : ControllerBase
 
         var query = _context.Exams
             .AsNoTracking()
+            .Include(e => e.MebGroup)
             .AsQueryable();
 
-        if (courseId.HasValue)
+        if (mebGroupId.HasValue)
         {
-            query = query.Where(e => e.CourseId == courseId.Value);
+            query = query.Where(e => e.MebGroupId == mebGroupId.Value);
         }
 
         if (srcType.HasValue)
         {
-            query = query.Where(e => e.Course.SrcType == srcType.Value);
+            query = query.Where(e => e.MebGroup.SrcType == srcType.Value);
         }
 
         if (!string.IsNullOrWhiteSpace(examType))
@@ -80,8 +84,8 @@ public class ExamsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(branch))
         {
             var pattern = $"%{branch.Trim()}%";
-            query = query.Where(e => e.Course.MebGroup.Branch != null &&
-                                     EF.Functions.Like(e.Course.MebGroup.Branch, pattern));
+            query = query.Where(e => e.MebGroup.Branch != null &&
+                                     EF.Functions.Like(e.MebGroup.Branch, pattern));
         }
 
         var totalCount = await query.CountAsync();
@@ -106,17 +110,14 @@ public class ExamsController : ControllerBase
                 e.MebSessionCode,
                 e.Status,
                 e.Notes,
-                CourseInfo = new
+                GroupInfo = new
                 {
-                    e.Course.Id,
-                    e.Course.SrcType,
-                    GroupInfo = new
-                    {
-                        e.Course.MebGroup.Year,
-                        e.Course.MebGroup.Month,
-                        e.Course.MebGroup.GroupNo,
-                        e.Course.MebGroup.Branch
-                    }
+                    e.MebGroup.Id,
+                    e.MebGroup.SrcType,
+                    e.MebGroup.Year,
+                    e.MebGroup.Month,
+                    e.MebGroup.GroupNo,
+                    e.MebGroup.Branch
                 },
                 ResultCount = e.ExamResults.Count,
                 PassCount = e.ExamResults.Count(r => r.Pass),
@@ -145,6 +146,178 @@ public class ExamsController : ControllerBase
         }
 
         return Ok(BuildExamResponse(exam));
+    }
+
+    [HttpGet("practical/eligible-students")]
+    public async Task<ActionResult> GetEligibleStudentsForPractical([FromQuery] int mebGroupId, [FromQuery] int writtenExamId)
+    {
+        // Yazılı sınavı geçen öğrencileri getir
+        var writtenExam = await _context.Exams
+            .AsNoTracking()
+            .Include(e => e.MebGroup)
+            .FirstOrDefaultAsync(e => e.Id == writtenExamId && e.MebGroupId == mebGroupId);
+
+        if (writtenExam == null)
+        {
+            return NotFound(new { message = "Yazılı sınav bulunamadı." });
+        }
+
+        var passedStudents = await _context.ExamResults
+            .AsNoTracking()
+            .Include(er => er.Student)
+            .Where(er => er.ExamId == writtenExamId && er.Pass && er.Score >= 70)
+            .Select(er => new
+            {
+                er.StudentId,
+                er.Student.TcKimlikNo,
+                er.Student.FirstName,
+                er.Student.LastName,
+                WrittenScore = er.Score,
+                WrittenPass = er.Pass
+            })
+            .OrderBy(s => s.LastName)
+            .ThenBy(s => s.FirstName)
+            .ToListAsync();
+
+        return Ok(passedStudents);
+    }
+
+    [HttpGet("groups/{groupId}/students")]
+    public async Task<ActionResult> GetStudentsByGroup(int groupId, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
+    {
+        // Belirli dönemlerdeki sınıflardaki öğrencileri getir
+        var group = await _context.MebGroups
+            .AsNoTracking()
+            .Include(g => g.Enrollments)
+                .ThenInclude(e => e.Student)
+            .FirstOrDefaultAsync(g => g.Id == groupId);
+
+        if (group == null)
+        {
+            return NotFound(new { message = "Sınıf bulunamadı." });
+        }
+
+        var students = group.Enrollments
+            .Where(e => e.Status == "active")
+            .Select(e => e.Student)
+            .Distinct()
+            .Select(s => new
+            {
+                s.Id,
+                s.TcKimlikNo,
+                s.FirstName,
+                s.LastName,
+                s.Email,
+                s.Phone
+            })
+            .OrderBy(s => s.LastName)
+            .ThenBy(s => s.FirstName)
+            .ToList();
+
+        return Ok(students);
+    }
+
+    [HttpPost("practical/{practicalExamId}/auto-generate-certificates")]
+    public async Task<ActionResult> AutoGenerateCertificates(int practicalExamId)
+    {
+        var practicalExam = await _context.Exams
+            .Include(e => e.MebGroup)
+            .Include(e => e.ExamResults)
+            .FirstOrDefaultAsync(e => e.Id == practicalExamId);
+
+        if (practicalExam == null)
+        {
+            return NotFound(new { message = "Pratik sınav bulunamadı." });
+        }
+
+        if (practicalExam.MebGroup == null)
+        {
+            return BadRequest(new { message = "Pratik sınavın sınıf bilgisi bulunamadı." });
+        }
+
+        // Pratik sınavı geçen öğrencileri bul
+        var passedStudents = practicalExam.ExamResults
+            .Where(er => er.Pass && er.Score >= 70)
+            .Select(er => er.StudentId)
+            .ToList();
+
+        if (passedStudents.Count == 0)
+        {
+            return Ok(new { message = "Pratik sınavı geçen öğrenci bulunamadı.", certificatesGenerated = 0 });
+        }
+
+        // Aynı sınıf için yazılı sınavı bul
+        var writtenExam = await _context.Exams
+            .AsNoTracking()
+            .FirstOrDefaultAsync(e =>
+                e.MebGroupId == practicalExam.MebGroupId &&
+                (e.ExamType.ToLower() == "yazili" || e.ExamType.ToLower() == "written") &&
+                e.Status == "completed");
+
+        if (writtenExam == null)
+        {
+            return BadRequest(new { message = "Bu kurs için yazılı sınav bulunamadı." });
+        }
+
+        // Yazılı sınavı geçen öğrencileri önceden yükle (performans için)
+        var writtenPassedStudentIdsList = await _context.ExamResults
+            .AsNoTracking()
+            .Where(er =>
+                er.ExamId == writtenExam.Id &&
+                passedStudents.Contains(er.StudentId) &&
+                er.Pass &&
+                er.Score >= 70)
+            .Select(er => er.StudentId)
+            .ToListAsync();
+        var writtenPassedStudentIds = writtenPassedStudentIdsList.ToHashSet();
+
+        // Her öğrenci için sertifika oluştur (batch processing)
+        var generatedCertificates = new List<object>();
+        var errors = new List<string>();
+        const int batchSize = 10; // Her seferde 10 öğrenci işle
+
+        for (int i = 0; i < passedStudents.Count; i += batchSize)
+        {
+            var batch = passedStudents.Skip(i).Take(batchSize).ToList();
+            
+            foreach (var studentId in batch)
+            {
+                try
+                {
+                    // Yazılı sınavı geçmiş mi kontrol et (önceden yüklenen set'ten)
+                    if (!writtenPassedStudentIds.Contains(studentId))
+                    {
+                        errors.Add($"Öğrenci {studentId} yazılı sınavı geçmemiş.");
+                        continue;
+                    }
+
+                    var certificate = await _certificateService.GenerateCertificateAsync(
+                        studentId,
+                        practicalExam.MebGroupId,
+                        writtenExam.Id,
+                        practicalExamId);
+
+                    generatedCertificates.Add(certificate);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"Öğrenci {studentId} için sertifika oluşturulamadı: {ex.Message}");
+                }
+            }
+            
+            // Her batch sonrası kısa bir bekleme (database yükünü azaltmak için)
+            if (i + batchSize < passedStudents.Count)
+            {
+                await Task.Delay(100); // 100ms bekleme
+            }
+        }
+
+        return Ok(new
+        {
+            certificatesGenerated = generatedCertificates.Count,
+            certificates = generatedCertificates,
+            errors
+        });
     }
 
     [HttpGet("groups/{groupId}/results")]
@@ -246,7 +419,7 @@ public class ExamsController : ControllerBase
                     TcKimlikNo = written.TcKimlikNo,
                     FirstName = written.FirstName,
                     LastName = written.LastName,
-                    CourseId = written.CourseId,
+                    MebGroupId = written.MebGroupId,
                     CourseName = written.CourseName,
                     WrittenPassed = true,
                     WrittenExamDate = written.ExamDate,
@@ -331,15 +504,15 @@ public class ExamsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult> Create([FromBody] CreateExamRequest request)
     {
-        var course = await _context.Courses.FindAsync(request.CourseId);
-        if (course == null)
+        var group = await _context.MebGroups.FindAsync(request.MebGroupId);
+        if (group == null)
         {
-            return BadRequest(new { message = "Kurs bulunamadı" });
+            return BadRequest(new { message = "Sınıf bulunamadı" });
         }
 
         var exam = new SRC.Domain.Entities.Exam
         {
-            CourseId = request.CourseId,
+            MebGroupId = request.MebGroupId,
             ExamType = request.ExamType,
             ExamDate = request.ExamDate,
             MebSessionCode = request.MebSessionCode,
@@ -380,10 +553,18 @@ public class ExamsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
-        var exam = await _context.Exams.FindAsync(id);
+        var exam = await _context.Exams
+            .Include(e => e.ExamResults)
+            .FirstOrDefaultAsync(e => e.Id == id);
         if (exam == null)
         {
             return NotFound();
+        }
+
+        // İlişkili sınav sonuçlarını sil
+        if (exam.ExamResults.Any())
+        {
+            _context.ExamResults.RemoveRange(exam.ExamResults);
         }
 
         _context.Exams.Remove(exam);
@@ -401,8 +582,7 @@ public class ExamsController : ControllerBase
         }
 
         var exam = await _context.Exams
-            .Include(e => e.Course)
-                .ThenInclude(c => c.MebGroup)
+            .Include(e => e.MebGroup)
             .Include(e => e.ExamResults)
             .FirstOrDefaultAsync(e => e.Id == id);
 
@@ -431,8 +611,7 @@ public class ExamsController : ControllerBase
         }
 
         var exam = await _context.Exams
-            .Include(e => e.Course)
-                .ThenInclude(c => c.MebGroup)
+            .Include(e => e.MebGroup)
             .Include(e => e.ExamResults)
             .FirstOrDefaultAsync(e => e.Id == id);
 
@@ -560,14 +739,16 @@ public class ExamsController : ControllerBase
 
         var rawResults = await _context.ExamResults
             .AsNoTracking()
-            .Where(er => er.Exam.Course.MebGroupId == groupId)
+            .Include(er => er.Exam)
+                .ThenInclude(e => e.MebGroup)
+            .Where(er => er.Exam.MebGroupId == groupId)
             .Select(er => new
             {
                 er.ExamId,
                 er.Exam.ExamDate,
                 er.Exam.ExamType,
-                er.Exam.CourseId,
-                er.Exam.Course.SrcType,
+                er.Exam.MebGroupId,
+                er.Exam.MebGroup.SrcType,
                 er.StudentId,
                 er.Student.TcKimlikNo,
                 er.Student.FirstName,
@@ -583,7 +764,7 @@ public class ExamsController : ControllerBase
             .Select(item => new GroupExamResultItemDto
             {
                 ExamId = item.ExamId,
-                CourseId = item.CourseId,
+                MebGroupId = item.MebGroupId,
                 CourseName = MebNamingHelper.BuildCourseName(item.SrcType, group),
                 ExamType = item.ExamType,
                 ExamDate = item.ExamDate,
@@ -603,7 +784,7 @@ public class ExamsController : ControllerBase
 
         var totalStudents = await _context.Enrollments
             .AsNoTracking()
-            .Where(enrollment => enrollment.Course.MebGroupId == groupId)
+            .Where(enrollment => enrollment.MebGroupId == groupId)
             .Select(enrollment => enrollment.StudentId)
             .Distinct()
             .CountAsync();
@@ -670,7 +851,7 @@ public class ExamsController : ControllerBase
 
         var courseResults = await _context.ExamResults
             .Include(er => er.Exam)
-            .Where(er => studentIds.Contains(er.StudentId) && er.Exam.CourseId == exam.CourseId)
+            .Where(er => studentIds.Contains(er.StudentId) && er.Exam.MebGroupId == exam.MebGroupId)
             .Select(er => new { er.StudentId, er.AttemptNo, er.ExamId })
             .ToListAsync();
 
@@ -770,8 +951,7 @@ public class ExamsController : ControllerBase
     {
         return await _context.Exams
             .AsNoTracking()
-            .Include(e => e.Course)
-                .ThenInclude(c => c.MebGroup)
+            .Include(e => e.MebGroup)
             .Include(e => e.ExamResults)
                 .ThenInclude(er => er.Student)
             .FirstOrDefaultAsync(e => e.Id == id);
@@ -782,23 +962,20 @@ public class ExamsController : ControllerBase
         return new
         {
             exam.Id,
-            exam.CourseId,
+            exam.MebGroupId,
             exam.ExamType,
             exam.ExamDate,
             exam.MebSessionCode,
             exam.Status,
             exam.Notes,
-            CourseInfo = new
+            GroupInfo = new
             {
-                exam.Course.Id,
-                exam.Course.SrcType,
-                GroupInfo = new
-                {
-                    exam.Course.MebGroup.Year,
-                    exam.Course.MebGroup.Month,
-                    exam.Course.MebGroup.GroupNo,
-                    exam.Course.MebGroup.Branch
-                }
+                exam.MebGroup.Id,
+                exam.MebGroup.SrcType,
+                exam.MebGroup.Year,
+                exam.MebGroup.Month,
+                exam.MebGroup.GroupNo,
+                exam.MebGroup.Branch
             },
             Results = exam.ExamResults
                 .OrderBy(er => er.Student.LastName)
@@ -863,7 +1040,7 @@ public class ExamsController : ControllerBase
 
 public class CreateExamRequest
 {
-    public int CourseId { get; set; }
+    public int MebGroupId { get; set; }
     public string ExamType { get; set; } = string.Empty;
     public DateTime ExamDate { get; set; }
     public string? MebSessionCode { get; set; }

@@ -30,6 +30,7 @@ public class CreateStudentRequest
     public string? EducationLevel { get; set; }
     public string? LicenseType { get; set; }
     public DateTime? LicenseIssueDate { get; set; }
+    public List<int>? SelectedSrcCourses { get; set; } // Seçilen SRC kursları (1, 2, 3, 4)
 }
 
 public class UpdateStudentRequest

@@ -13,10 +13,12 @@ public static class SeedData
     {
         var now = DateTime.UtcNow;
 
+        // Tenant'ları sadece yoksa oluştur (silinmiş tenant'ları tekrar oluşturma)
         var tenants = SeedTenants(context, now);
         var users = SeedUsers(context, now, tenants);
 
-        if (!context.Students.Any())
+        // Öğrenci verilerini sadece hiç öğrenci yoksa ekle
+        if (!context.Students.IgnoreQueryFilters().Any())
         {
             SeedTenantData(context, users, now);
         }
@@ -170,7 +172,13 @@ public static class SeedData
             StartDate = now.AddDays(-10),
             EndDate = now.AddDays(25),
             Capacity = 24,
-            Status = "active"
+            Status = "active",
+            SrcType = 1,
+            IsMixed = false,
+            PlannedHours = 36,
+            MebApprovalStatus = "approved",
+            ApprovalAt = now.AddDays(-7),
+            ApprovalNotes = "Onaylandı"
         };
 
         var duruGroup = new MebGroup
@@ -183,25 +191,7 @@ public static class SeedData
             StartDate = now.AddDays(5),
             EndDate = now.AddDays(40),
             Capacity = 20,
-            Status = "draft"
-        };
-
-        var maviCourse = new Course
-        {
-            TenantId = TenantMavi,
-            MebGroup = maviGroup,
-            SrcType = 1,
-            IsMixed = false,
-            PlannedHours = 36,
-            MebApprovalStatus = "approved",
-            ApprovalAt = now.AddDays(-7),
-            ApprovalNotes = "Onaylandı"
-        };
-
-        var duruCourse = new Course
-        {
-            TenantId = TenantDuru,
-            MebGroup = duruGroup,
+            Status = "draft",
             SrcType = 3,
             IsMixed = true,
             MixedTypes = "SRC3,SRC4",
@@ -215,7 +205,7 @@ public static class SeedData
             new ScheduleSlot
             {
                 TenantId = TenantMavi,
-                Course = maviCourse,
+                MebGroup = maviGroup,
                 InstructorId = users.MaviInstructor.Id,
                 ClassroomName = "Ankara A Sınıfı",
                 StartTime = now.AddDays(-3).Date.AddHours(9),
@@ -226,7 +216,7 @@ public static class SeedData
             new ScheduleSlot
             {
                 TenantId = TenantMavi,
-                Course = maviCourse,
+                MebGroup = maviGroup,
                 InstructorId = users.MaviInstructor.Id,
                 ClassroomName = "Ankara A Sınıfı",
                 StartTime = now.AddDays(-1).Date.AddHours(9),
@@ -241,7 +231,7 @@ public static class SeedData
             new ScheduleSlot
             {
                 TenantId = TenantDuru,
-                Course = duruCourse,
+                MebGroup = duruGroup,
                 InstructorId = users.DuruInstructor.Id,
                 ClassroomName = "İstanbul 1 Nolu Sınıf",
                 StartTime = now.AddDays(7).Date.AddHours(10),
@@ -257,7 +247,7 @@ public static class SeedData
             {
                 TenantId = TenantMavi,
                 Student = maviStudents[0],
-                Course = maviCourse,
+                MebGroup = maviGroup,
                 EnrollmentDate = now.AddDays(-12),
                 Status = "active",
                 Fee = 3500m,
@@ -268,7 +258,7 @@ public static class SeedData
             {
                 TenantId = TenantMavi,
                 Student = maviStudents[1],
-                Course = maviCourse,
+                MebGroup = maviGroup,
                 EnrollmentDate = now.AddDays(-11),
                 Status = "active",
                 Fee = 3600m,
@@ -281,7 +271,7 @@ public static class SeedData
         {
             TenantId = TenantDuru,
             Student = duruStudents[0],
-            Course = duruCourse,
+            MebGroup = duruGroup,
             EnrollmentDate = now.AddDays(-5),
             Status = "active",
             Fee = 4200m,
@@ -326,7 +316,7 @@ public static class SeedData
             new Exam
             {
                 TenantId = TenantMavi,
-                Course = maviCourse,
+                MebGroup = maviGroup,
                 ExamType = "yazili",
                 ExamDate = now.AddDays(14).Date.AddHours(10),
                 MebSessionCode = "SRC1-2026-03-YZL",
@@ -336,7 +326,7 @@ public static class SeedData
             new Exam
             {
                 TenantId = TenantMavi,
-                Course = maviCourse,
+                MebGroup = maviGroup,
                 ExamType = "uygulama",
                 ExamDate = now.AddDays(20).Date.AddHours(9),
                 MebSessionCode = "SRC1-2026-03-UYG",
@@ -348,7 +338,7 @@ public static class SeedData
         var duruExam = new Exam
         {
             TenantId = TenantDuru,
-            Course = duruCourse,
+            MebGroup = duruGroup,
             ExamType = "yazili",
             ExamDate = now.AddDays(30).Date.AddHours(11),
             MebSessionCode = "SRC3-2026-04-YZL",
@@ -471,7 +461,7 @@ public static class SeedData
         var transferJob = new MebbisTransferJob
         {
             TenantId = TenantMavi,
-            Course = maviCourse,
+            MebGroup = maviGroup,
             Mode = "dry_run",
             Status = "completed",
             SuccessCount = 1,
@@ -532,7 +522,6 @@ public static class SeedData
         context.Students.AddRange(maviStudents);
         context.Students.AddRange(duruStudents);
         context.MebGroups.AddRange(maviGroup, duruGroup);
-        context.Courses.AddRange(maviCourse, duruCourse);
         context.ScheduleSlots.AddRange(maviSchedule);
         context.ScheduleSlots.AddRange(duruSchedule);
         context.Enrollments.AddRange(maviEnrollments);
@@ -554,7 +543,7 @@ public static class SeedData
 
     private static Tenant EnsureTenant(SrcDbContext context, string tenantId, string name, string? city, DateTime now)
     {
-        var tenant = context.Tenants.SingleOrDefault(t => t.Id == tenantId);
+        var tenant = context.Tenants.IgnoreQueryFilters().SingleOrDefault(t => t.Id == tenantId);
         if (tenant == null)
         {
             tenant = new Tenant
@@ -569,6 +558,7 @@ public static class SeedData
         }
         else
         {
+            // Mevcut tenant varsa sadece güncelle, silinmiş tenant'ları tekrar oluşturma
             tenant.Name = name;
             tenant.City = city;
             tenant.IsActive = true;

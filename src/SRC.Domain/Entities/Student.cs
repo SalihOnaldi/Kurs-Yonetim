@@ -14,6 +14,7 @@ public class Student : TenantEntity
     public string? LicenseType { get; set; } // B, C, D, E, vb.
     public DateTime? LicenseIssueDate { get; set; }
     public string? FaceProfileId { get; set; }
+    public string? SelectedSrcCourses { get; set; } // Seçilen SRC kursları (örn: "1,2,3")
 
     // Navigation properties
     public ICollection<StudentDocument> Documents { get; set; } = new List<StudentDocument>();
@@ -22,5 +23,6 @@ public class Student : TenantEntity
     public ICollection<ExamResult> ExamResults { get; set; } = new List<ExamResult>();
     public ICollection<Payment> Payments { get; set; } = new List<Payment>();
     public ICollection<Reminder> Reminders { get; set; } = new List<Reminder>();
+    public ICollection<Certificate> Certificates { get; set; } = new List<Certificate>();
 }
 

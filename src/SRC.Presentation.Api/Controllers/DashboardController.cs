@@ -44,12 +44,12 @@ public class DashboardController : ControllerBase
         var startOfMonth = new DateTime(today.Year, today.Month, 1);
         var endOfMonth = startOfMonth.AddMonths(1);
 
-        var activeCourseCount = await _context.Courses
+        var activeCourseCount = await _context.MebGroups
             .AsNoTracking()
-            .Where(c =>
-                c.MebGroup.StartDate <= endOfMonth &&
-                c.MebGroup.EndDate >= startOfMonth &&
-                c.MebApprovalStatus != "rejected")
+            .Where(g =>
+                g.StartDate <= endOfMonth &&
+                g.EndDate >= startOfMonth &&
+                g.MebApprovalStatus != "rejected")
             .CountAsync();
 
         var totalStudentCount = await _context.Students.AsNoTracking().CountAsync();
@@ -95,25 +95,21 @@ public class DashboardController : ControllerBase
 
         var items = await _context.ScheduleSlots
             .AsNoTracking()
-            .Include(s => s.Course)
-                .ThenInclude(c => c.MebGroup)
+            .Include(s => s.MebGroup)
             .Include(s => s.Instructor)
             .Where(s => s.StartTime >= startOfDay && s.StartTime <= endOfDay)
             .OrderBy(s => s.StartTime)
             .Select(s => new
             {
                 s.Id,
-                Course = new
+                Group = new
                 {
-                    s.Course.Id,
-                    s.Course.SrcType,
-                    Group = new
-                    {
-                        s.Course.MebGroup.Year,
-                        s.Course.MebGroup.Month,
-                        s.Course.MebGroup.GroupNo,
-                        s.Course.MebGroup.Branch
-                    }
+                    s.MebGroup.Id,
+                    s.MebGroup.SrcType,
+                    s.MebGroup.Year,
+                    s.MebGroup.Month,
+                    s.MebGroup.GroupNo,
+                    s.MebGroup.Branch
                 },
                 Instructor = s.Instructor != null ? new
                 {
@@ -154,8 +150,7 @@ public class DashboardController : ControllerBase
 
         var exams = await _context.Exams
             .AsNoTracking()
-            .Include(e => e.Course)
-                .ThenInclude(c => c.MebGroup)
+            .Include(e => e.MebGroup)
             .Where(e => e.ExamDate >= now && e.ExamDate <= until)
             .OrderBy(e => e.ExamDate)
             .Select(e => new
@@ -165,17 +160,14 @@ public class DashboardController : ControllerBase
                 e.ExamDate,
                 e.Status,
                 e.MebSessionCode,
-                Course = new
+                Group = new
                 {
-                    e.Course.Id,
-                    e.Course.SrcType,
-                    Group = new
-                    {
-                        e.Course.MebGroup.Year,
-                        e.Course.MebGroup.Month,
-                        e.Course.MebGroup.GroupNo,
-                        e.Course.MebGroup.Branch
-                    }
+                    e.MebGroup.Id,
+                    e.MebGroup.SrcType,
+                    e.MebGroup.Year,
+                    e.MebGroup.Month,
+                    e.MebGroup.GroupNo,
+                    e.MebGroup.Branch
                 }
             })
             .ToListAsync();
@@ -199,8 +191,7 @@ public class DashboardController : ControllerBase
 
         var failedTransfers = await _context.MebbisTransferJobs
             .AsNoTracking()
-            .Include(j => j.Course)
-                .ThenInclude(c => c.MebGroup)
+            .Include(j => j.MebGroup)
             .Where(j =>
                 j.Status == "failed" &&
                 j.CreatedAt >= sevenDaysAgo)
@@ -214,17 +205,14 @@ public class DashboardController : ControllerBase
                 j.FailureCount,
                 j.ErrorMessage,
                 j.CreatedAt,
-                Course = new
+                Group = new
                 {
-                    j.Course.Id,
-                    j.Course.SrcType,
-                    Group = new
-                    {
-                        j.Course.MebGroup.Year,
-                        j.Course.MebGroup.Month,
-                        j.Course.MebGroup.GroupNo,
-                        j.Course.MebGroup.Branch
-                    }
+                    j.MebGroup.Id,
+                    j.MebGroup.SrcType,
+                    j.MebGroup.Year,
+                    j.MebGroup.Month,
+                    j.MebGroup.GroupNo,
+                    j.MebGroup.Branch
                 }
             })
             .Take(10)

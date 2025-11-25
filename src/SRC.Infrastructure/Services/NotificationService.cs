@@ -77,8 +77,7 @@ public class NotificationService : INotificationService
         {
             var failedTransfers = await _context.MebbisTransferJobs
                 .AsNoTracking()
-                .Include(j => j.Course)
-                    .ThenInclude(c => c.MebGroup)
+                .Include(j => j.MebGroup)
                 .Where(j => j.Status == "failed" && j.CreatedAt >= sevenDaysAgo)
                 .OrderByDescending(j => j.CreatedAt)
                 .Take(limit)
@@ -88,7 +87,7 @@ public class NotificationService : INotificationService
             {
                 Id = $"transfer-{j.Id}",
                 Title = "MEBBİS Aktarımı Başarısız",
-                Message = $"SRC{j.Course.SrcType} {j.Course.MebGroup.Branch} grup aktarımı başarısız oldu. {j.FailureCount} kayıt hatalı.",
+                Message = $"SRC{j.MebGroup.SrcType} {j.MebGroup.Branch} grup aktarımı başarısız oldu. {j.FailureCount} kayıt hatalı.",
                 Category = "transfer",
                 Severity = "danger",
                 CreatedAt = j.CreatedAt,
@@ -96,7 +95,7 @@ public class NotificationService : INotificationService
                 RelatedEntityId = j.Id,
                 Metadata = new Dictionary<string, string>
                 {
-                    ["CourseId"] = j.CourseId.ToString(),
+                    ["MebGroupId"] = j.MebGroupId.ToString(),
                     ["Mode"] = j.Mode,
                     ["ErrorMessage"] = j.ErrorMessage ?? string.Empty
                 }
@@ -107,8 +106,7 @@ public class NotificationService : INotificationService
         {
             var upcomingExams = await _context.Exams
                 .AsNoTracking()
-                .Include(e => e.Course)
-                    .ThenInclude(c => c.MebGroup)
+                .Include(e => e.MebGroup)
                 .Where(e => e.ExamDate >= now && e.ExamDate <= upcomingLimit)
                 .OrderBy(e => e.ExamDate)
                 .Take(limit)
@@ -118,7 +116,7 @@ public class NotificationService : INotificationService
             {
                 Id = $"exam-{e.Id}",
                 Title = "Yaklaşan Sınav",
-                Message = $"SRC{e.Course.SrcType} sınavı {e.ExamDate:dd.MM.yyyy HH:mm} tarihinde ({e.Course.MebGroup.Branch}) yapılacak.",
+                Message = $"SRC{e.MebGroup.SrcType} sınavı {e.ExamDate:dd.MM.yyyy HH:mm} tarihinde ({e.MebGroup.Branch}) yapılacak.",
                 Category = "exam",
                 Severity = "info",
                 CreatedAt = e.ExamDate,
@@ -127,7 +125,7 @@ public class NotificationService : INotificationService
                 Metadata = new Dictionary<string, string>
                 {
                     ["ExamType"] = e.ExamType,
-                    ["CourseId"] = e.CourseId.ToString(),
+                    ["MebGroupId"] = e.MebGroupId.ToString(),
                     ["Status"] = e.Status
                 }
             }));

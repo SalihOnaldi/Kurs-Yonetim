@@ -476,7 +476,7 @@ async function testStudentUltraComplex() {
     if (!createdStudentId) throw new Error('No student created');
     const response = await api.get(`/students/${createdStudentId}`);
     if (response.status !== 200) throw new Error(`Expected 200, got ${response.status}`);
-    if (!response.data.id) throw new Error('Student ID not found');
+    if (!response.data.profile?.id && !response.data.id) throw new Error('Student ID not found');
     return response.data;
   }, 'Student CRUD', true);
 
@@ -839,23 +839,29 @@ async function testCourseGroupUltraComplex() {
   await test('Delete group', async () => {
     // Create a group to delete
     const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
     const createResponse = await api.post('/courses/groups', {
       Year: now.getFullYear(),
       Month: now.getMonth() + 1,
-      GroupNo: 9993,
-      StartDate: new Date().toISOString().split('T')[0],
-      EndDate: new Date().toISOString().split('T')[0],
+      GroupNo: Math.floor(Math.random() * 10000) + 9000,
+      StartDate: now.toISOString().split('T')[0],
+      EndDate: tomorrow.toISOString().split('T')[0],
       Branch: 'ToDelete',
       Capacity: 30,
       SrcType: 1,
       IsMixed: false,
       PlannedHours: 40
     });
-    const groupId = createResponse.data.id;
+    const groupId = createResponse.data.id || createResponse.data.Id;
+    if (!groupId) {
+      throw new Error('Group ID not found in response: ' + JSON.stringify(createResponse.data));
+    }
     
-    const response = await api.delete(`/courses/groups/${groupId}`);
+    // Hard delete (soft=false)
+    const response = await api.delete(`/courses/groups/${groupId}?soft=false`, { validateStatus: () => true });
     if (response.status !== 200 && response.status !== 204) {
-      throw new Error(`Expected 200/204, got ${response.status}`);
+      throw new Error(`Expected 200/204, got ${response.status}: ${JSON.stringify(response.data)}`);
     }
     return { deleted: true };
   }, 'Course/Group CRUD', true);
@@ -974,8 +980,10 @@ async function testEnrollmentUltraComplex() {
   }, 'Enrollment');
 
   await test('Remove student from group', async () => {
-    if (!studentId || !groupId) throw new Error('Student or group not created');
-    const response = await api.delete(`/courses/groups/${groupId}/students/${studentId}`);
+    if (!studentId || !groupId || !enrollmentId) {
+      throw new Error(`Student, group or enrollment not created - studentId: ${studentId}, groupId: ${groupId}, enrollmentId: ${enrollmentId}`);
+    }
+    const response = await api.delete(`/courses/groups/${groupId}/students/${enrollmentId}`);
     if (response.status !== 200 && response.status !== 204) {
       throw new Error(`Expected 200/204, got ${response.status}`);
     }
@@ -1161,12 +1169,14 @@ async function testDataIntegrity() {
     
     // Create group
     const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
     const groupResponse = await api.post('/courses/groups', {
       Year: now.getFullYear(),
       Month: now.getMonth() + 1,
       GroupNo: Math.floor(Math.random() * 1000) + 4000,
-      StartDate: new Date().toISOString().split('T')[0],
-      EndDate: new Date().toISOString().split('T')[0],
+      StartDate: now.toISOString().split('T')[0],
+      EndDate: tomorrow.toISOString().split('T')[0],
       Branch: 'Cascade Test',
       Capacity: 30,
       SrcType: 1,
@@ -1181,21 +1191,52 @@ async function testDataIntegrity() {
     });
     
     // Delete student
-    const deleteResponse = await api.delete(`/students/${studentId}`);
+    const deleteResponse = await api.delete(`/students/${studentId}`, { validateStatus: () => true });
     if (deleteResponse.status !== 200 && deleteResponse.status !== 204) {
-      throw new Error(`Expected 200/204, got ${deleteResponse.status}`);
+      throw new Error(`Expected 200/204, got ${deleteResponse.status}: ${JSON.stringify(deleteResponse.data)}`);
     }
     
+    // Wait a bit for deletion to complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     // Verify student is deleted
-    const getStudentResponse = await api.get(`/students/${studentId}`);
-    if (getStudentResponse.status !== 404) {
-      throw new Error('Student should be deleted');
+    try {
+      const getStudentResponse = await api.get(`/students/${studentId}`, { validateStatus: () => true });
+      if (getStudentResponse.status !== 404) {
+        throw new Error(`Student should be deleted but got status ${getStudentResponse.status}`);
+      }
+    } catch (error) {
+      if (error.response?.status !== 404 && error.response?.status !== undefined) {
+        throw error;
+      }
+      // If no response, it might be a network error, check if it's actually 404
+      if (!error.response || error.response.status !== 404) {
+        // Try one more time
+        await new Promise(resolve => setTimeout(resolve, 200));
+        try {
+          const retryResponse = await api.get(`/students/${studentId}`, { validateStatus: () => true });
+          if (retryResponse.status !== 404) {
+            throw new Error(`Student should be deleted but got status ${retryResponse.status}`);
+          }
+        } catch (retryError) {
+          if (retryError.response?.status !== 404) {
+            throw new Error(`Student should be deleted but got status ${retryError.response?.status || 'unknown'}`);
+          }
+        }
+      }
     }
     
     // Verify group still exists
-    const getGroupResponse = await api.get(`/courses/groups/${groupId}/detail`);
-    if (getGroupResponse.status !== 200) {
-      throw new Error('Group should still exist');
+    try {
+      const getGroupResponse = await api.get(`/courses/groups/${groupId}/detail`);
+      if (getGroupResponse.status !== 200) {
+        throw new Error('Group should still exist');
+      }
+    } catch (error) {
+      if (error.response?.status === 404) {
+        throw new Error('Group should still exist');
+      }
+      throw error;
     }
     
     // Cleanup

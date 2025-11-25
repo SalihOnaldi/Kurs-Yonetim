@@ -1,0 +1,333 @@
+{
+  "summary": {
+    "passed": 24,
+    "failed": 1,
+    "warnings": 0,
+    "totalTime": 2.328,
+    "successRate": "96.00%"
+  },
+  "bugs": [
+    {
+      "name": "Create student with invalid email format",
+      "category": "Student CRUD",
+      "error": "Should reject invalid email",
+      "duration": 27.907200000000103,
+      "critical": false,
+      "stack": "Error: Should reject invalid email\n    at C:\\Users\\0000K04-ULPC-01\\Desktop\\SRC Projesi\\ProjeDosyasi\\V1\\test-ultra-complex-bug-hunter.js:455:15\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async test (C:\\Users\\0000K04-ULPC-01\\Desktop\\SRC Projesi\\ProjeDosyasi\\V1\\test-ultra-complex-bug-hunter.js:56:20)\n    at async testStudentUltraComplex (C:\\Users\\0000K04-ULPC-01\\Desktop\\SRC Projesi\\ProjeDosyasi\\V1\\test-ultra-complex-bug-hunter.js:446:3)\n    at async runAllTests (C:\\Users\\0000K04-ULPC-01\\Desktop\\SRC Projesi\\ProjeDosyasi\\V1\\test-ultra-complex-bug-hunter.js:1332:5)"
+    }
+  ],
+  "performance": [],
+  "details": [
+    {
+      "name": "Admin login with correct credentials",
+      "category": "Authentication",
+      "status": "PASS",
+      "duration": 297.5795,
+      "result": {
+        "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1laWQiOiIxIiwidW5pcXVlX25hbWUiOiJhZG1pbiIsInJvbGUiOiJQbGF0Zm9ybU93bmVyIiwiZW1haWwiOiJhZG1pbkBzcmMubG9jYWwiLCJ0ZW5hbnRJZCI6IkRFTkVNRS0xIiwibmJmIjoxNzY0MDE4MjkzLCJleHAiOjE3NjQxMDQ2OTMsImlhdCI6MTc2NDAxODI5M30.CFHGzWkxQQFHaX9x3gef8QA-kjugIsGvzKb9zK3vgiY",
+        "refreshToken": "1ac157d0-1ac5-40d0-8eb5-a87c6c9117e1",
+        "user": {
+          "id": 1,
+          "username": "admin",
+          "email": "admin@src.local",
+          "fullName": "Platform Yöneticisi",
+          "role": "PlatformOwner",
+          "tenants": [
+            "DENEME-1"
+          ]
+        },
+        "tenantId": "DENEME-1",
+        "tenants": [
+          "DENEME-1"
+        ]
+      }
+    },
+    {
+      "name": "SQL Injection attempt in username",
+      "category": "Security",
+      "status": "PASS",
+      "duration": 13.977800000000002,
+      "result": {
+        "blocked": true
+      }
+    },
+    {
+      "name": "XSS attempt in username",
+      "category": "Security",
+      "status": "PASS",
+      "duration": 9.24739999999997,
+      "result": {
+        "blocked": true
+      }
+    },
+    {
+      "name": "Very long username (DoS attempt)",
+      "category": "Security",
+      "status": "PASS",
+      "duration": 19.27800000000002,
+      "result": {
+        "blocked": true
+      }
+    },
+    {
+      "name": "Null byte injection",
+      "category": "Security",
+      "status": "PASS",
+      "duration": 332.50059999999996,
+      "result": {
+        "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1laWQiOiIxIiwidW5pcXVlX25hbWUiOiJhZG1pbiIsInJvbGUiOiJQbGF0Zm9ybU93bmVyIiwiZW1haWwiOiJhZG1pbkBzcmMubG9jYWwiLCJ0ZW5hbnRJZCI6IkRFTkVNRS0xIiwibmJmIjoxNzY0MDE4MjkzLCJleHAiOjE3NjQxMDQ2OTMsImlhdCI6MTc2NDAxODI5M30.CFHGzWkxQQFHaX9x3gef8QA-kjugIsGvzKb9zK3vgiY",
+        "refreshToken": "a5edc5c2-958e-4805-a71c-1113d0d728d6",
+        "user": {
+          "id": 1,
+          "username": "admin",
+          "email": "admin@src.local",
+          "fullName": "Platform Yöneticisi",
+          "role": "PlatformOwner",
+          "tenants": [
+            "DENEME-1"
+          ]
+        },
+        "tenantId": "DENEME-1",
+        "tenants": [
+          "DENEME-1"
+        ]
+      }
+    },
+    {
+      "name": "Empty strings",
+      "category": "Security",
+      "status": "PASS",
+      "duration": 9.977899999999977,
+      "result": {
+        "message": "Invalid username or password"
+      }
+    },
+    {
+      "name": "Special characters in password",
+      "category": "Security",
+      "status": "PASS",
+      "duration": 319.91930000000013,
+      "result": {
+        "message": "Invalid username or password"
+      }
+    },
+    {
+      "name": "Unicode characters",
+      "category": "Security",
+      "status": "PASS",
+      "duration": 298.24530000000004,
+      "result": {
+        "message": "Invalid username or password"
+      }
+    },
+    {
+      "name": "Create student with all fields populated",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 65.55069999999978,
+      "result": {
+        "id": 9154,
+        "tcKimlikNo": "38534105197",
+        "firstName": "Test",
+        "lastName": "Öğrenci",
+        "birthDate": "1990-01-01T00:00:00",
+        "phone": "05551234567",
+        "email": "test@example.com",
+        "address": "Test Adresi 123",
+        "educationLevel": "Lise",
+        "licenseType": "B",
+        "licenseIssueDate": "2015-01-01T00:00:00",
+        "createdAt": "2025-11-24T21:04:54.6181194Z"
+      }
+    },
+    {
+      "name": "Create student with boundary values - minimum age",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 17.01150000000007,
+      "result": {
+        "id": 9155,
+        "tcKimlikNo": "53572657344",
+        "firstName": "MinAge",
+        "lastName": "Test",
+        "birthDate": "2007-11-24T00:00:00",
+        "phone": null,
+        "email": null,
+        "address": null,
+        "educationLevel": null,
+        "licenseType": null,
+        "licenseIssueDate": null,
+        "createdAt": "2025-11-24T21:04:54.6768632Z"
+      }
+    },
+    {
+      "name": "Create student with boundary values - maximum age",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 15.840400000000045,
+      "result": {
+        "id": 9156,
+        "tcKimlikNo": "13473115902",
+        "firstName": "MaxAge",
+        "lastName": "Test",
+        "birthDate": "1925-11-24T00:00:00",
+        "phone": null,
+        "email": null,
+        "address": null,
+        "educationLevel": null,
+        "licenseType": null,
+        "licenseIssueDate": null,
+        "createdAt": "2025-11-24T21:04:54.6921557Z"
+      }
+    },
+    {
+      "name": "Create student with future birth date (should fail)",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 3.853599999999915
+    },
+    {
+      "name": "Create student with invalid TC format - too short",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 4.943700000000035
+    },
+    {
+      "name": "Create student with invalid TC format - too long",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 8.114199999999983
+    },
+    {
+      "name": "Create student with invalid TC format - non-numeric",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 5.389700000000175
+    },
+    {
+      "name": "Create student with duplicate TC (should fail)",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 30.739199999999983
+    },
+    {
+      "name": "Create student with SQL injection in name",
+      "category": "Security",
+      "status": "PASS",
+      "duration": 661.8466000000001,
+      "result": {
+        "blocked": true
+      }
+    },
+    {
+      "name": "Create student with XSS in name",
+      "category": "Security",
+      "status": "PASS",
+      "duration": 26.559699999999793,
+      "result": {
+        "id": 9159,
+        "tcKimlikNo": "55903221553",
+        "firstName": "<script>alert(\"xss\")</script>",
+        "lastName": "Test",
+        "birthDate": null,
+        "phone": null,
+        "email": null,
+        "address": null,
+        "educationLevel": null,
+        "licenseType": null,
+        "licenseIssueDate": null,
+        "createdAt": "2025-11-24T21:04:55.4289223Z"
+      }
+    },
+    {
+      "name": "Create student with very long name (DoS)",
+      "category": "Security",
+      "status": "PASS",
+      "duration": 8.746599999999944
+    },
+    {
+      "name": "Create student with null values",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 9.735599999999977,
+      "result": {
+        "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+        "title": "One or more validation errors occurred.",
+        "status": 400,
+        "errors": {
+          "LastName": [
+            "The LastName field is required."
+          ],
+          "FirstName": [
+            "The FirstName field is required."
+          ]
+        },
+        "traceId": "00-0cfa88fe32c809b38389e985164670cb-379f1de145458bb1-00"
+      }
+    },
+    {
+      "name": "Create student with empty strings",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 9.248900000000049,
+      "result": {
+        "message": "Ad gereklidir"
+      }
+    },
+    {
+      "name": "Create student with whitespace-only strings",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 17.856700000000274,
+      "result": {
+        "message": "Ad gereklidir"
+      }
+    },
+    {
+      "name": "Create student with special characters",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 34.99449999999979,
+      "result": {
+        "id": 9160,
+        "tcKimlikNo": "06483491770",
+        "firstName": "O'Brien-Çelik & Şahin",
+        "lastName": "Test<>\"'",
+        "birthDate": null,
+        "phone": null,
+        "email": "test+tag@example.com",
+        "address": null,
+        "educationLevel": null,
+        "licenseType": null,
+        "licenseIssueDate": null,
+        "createdAt": "2025-11-24T21:04:55.5090459Z"
+      }
+    },
+    {
+      "name": "Create student with Unicode characters",
+      "category": "Student CRUD",
+      "status": "PASS",
+      "duration": 30.379699999999957,
+      "result": {
+        "id": 9161,
+        "tcKimlikNo": "88752837978",
+        "firstName": "测试学生",
+        "lastName": "Тест",
+        "birthDate": null,
+        "phone": null,
+        "email": "test@测试.com",
+        "address": null,
+        "educationLevel": null,
+        "licenseType": null,
+        "licenseIssueDate": null,
+        "createdAt": "2025-11-24T21:04:55.541535Z"
+      }
+    },
+    {
+      "name": "Create student with invalid email format",
+      "category": "Student CRUD",
+      "duration": 27.907200000000103,
+      "error": "Should reject invalid email"
+    }
+  ]
+}

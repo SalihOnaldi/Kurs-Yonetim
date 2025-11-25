@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SRC.Infrastructure.Data;
-using SRC.Presentation.Api.Utilities;
+using SRC.Infrastructure.Utilities;
 using SRC.Domain.Entities;
 
 namespace SRC.Presentation.Api.Controllers;
@@ -107,6 +107,7 @@ public class CoursesController : ControllerBase
             totalCount = totalCount
         });
     }
+
 
     [HttpGet("{id}")]
     public async Task<ActionResult> GetById(int id)
@@ -517,6 +518,29 @@ public class CoursesController : ControllerBase
         if (course.Enrollments.Any(e => e.StudentId == request.StudentId))
         {
             return BadRequest(new { message = "Kursiyer zaten bu kursa kayıtlı" });
+        }
+
+        // SRC türü uyumluluğu kontrolü
+        if (!string.IsNullOrWhiteSpace(student.SelectedSrcCourses))
+        {
+            var selectedSrcTypes = student.SelectedSrcCourses
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => int.TryParse(s.Trim(), out var num) ? num : (int?)null)
+                .Where(n => n.HasValue)
+                .Select(n => n!.Value)
+                .ToList();
+
+            if (selectedSrcTypes.Count > 0 && !selectedSrcTypes.Contains(course.SrcType))
+            {
+                var selectedSrcNames = string.Join(", ", selectedSrcTypes.Select(t => $"SRC{t}"));
+                return BadRequest(new 
+                { 
+                    message = $"Uyarı: Bu kursiyer {selectedSrcNames} kursları için kayıt yaptırmış ancak bu sınıf SRC{course.SrcType} sınıfıdır. Devam etmek istediğinizden emin misiniz?",
+                    warning = true,
+                    studentSelectedSrcTypes = selectedSrcTypes,
+                    courseSrcType = course.SrcType
+                });
+            }
         }
 
         var enrollment = new SRC.Domain.Entities.Enrollment

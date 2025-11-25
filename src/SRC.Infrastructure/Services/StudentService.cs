@@ -90,8 +90,7 @@ public class StudentService : IStudentService
         var query = _context.Students
             .AsNoTracking()
             .Include(s => s.Enrollments)
-                .ThenInclude(e => e.Course)
-                    .ThenInclude(c => c.MebGroup)
+                .ThenInclude(e => e.MebGroup)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
@@ -108,8 +107,8 @@ public class StudentService : IStudentService
             var branch = filter.Branch.Trim().ToLower();
             query = query.Where(s =>
                 s.Enrollments.Any(e =>
-                    e.Course.MebGroup.Branch != null &&
-                    e.Course.MebGroup.Branch.ToLower() == branch));
+                    e.MebGroup.Branch != null &&
+                    e.MebGroup.Branch.ToLower() == branch));
         }
 
         if (filter.HasActiveCourse.HasValue)
@@ -119,16 +118,16 @@ public class StudentService : IStudentService
                 query = query.Where(s =>
                     s.Enrollments.Any(e =>
                         e.Status == "active" &&
-                        e.Course.MebGroup.StartDate <= now &&
-                        e.Course.MebGroup.EndDate >= now));
+                        e.MebGroup.StartDate <= now &&
+                        e.MebGroup.EndDate >= now));
             }
             else
             {
                 query = query.Where(s =>
                     !s.Enrollments.Any(e =>
                         e.Status == "active" &&
-                        e.Course.MebGroup.StartDate <= now &&
-                        e.Course.MebGroup.EndDate >= now));
+                        e.MebGroup.StartDate <= now &&
+                        e.MebGroup.EndDate >= now));
             }
         }
 
@@ -149,15 +148,15 @@ public class StudentService : IStudentService
                     {
                         e.EnrollmentDate,
                         e.Status,
-                        e.Course.SrcType,
+                        e.MebGroup.SrcType,
                         Group = new
                         {
-                            e.Course.MebGroup.Year,
-                            e.Course.MebGroup.Month,
-                            e.Course.MebGroup.GroupNo,
-                            e.Course.MebGroup.Branch,
-                            e.Course.MebGroup.StartDate,
-                            e.Course.MebGroup.EndDate
+                            e.MebGroup.Year,
+                            e.MebGroup.Month,
+                            e.MebGroup.GroupNo,
+                            e.MebGroup.Branch,
+                            e.MebGroup.StartDate,
+                            e.MebGroup.EndDate
                         }
                     })
             })
@@ -208,12 +207,10 @@ public class StudentService : IStudentService
             .AsNoTracking()
             .Include(s => s.Documents)
             .Include(s => s.Enrollments)
-                .ThenInclude(e => e.Course)
-                    .ThenInclude(c => c.MebGroup)
+                .ThenInclude(e => e.MebGroup)
             .Include(s => s.Payments)
                 .ThenInclude(p => p.Enrollment!)
-                    .ThenInclude(e => e.Course)
-                        .ThenInclude(c => c.MebGroup)
+                    .ThenInclude(e => e.MebGroup)
             .Include(s => s.ExamResults)
                 .ThenInclude(er => er.Exam)
             .FirstOrDefaultAsync(s => s.Id == id);
@@ -224,8 +221,8 @@ public class StudentService : IStudentService
         }
 
         var now = DateTime.UtcNow;
-        var examAttemptsByCourse = student.ExamResults
-            .GroupBy(er => er.Exam.CourseId)
+        var examAttemptsByGroup = student.ExamResults
+            .GroupBy(er => er.Exam.MebGroupId)
             .ToDictionary(g => g.Key, g => g.Count());
 
         var profile = new StudentDto
@@ -266,7 +263,7 @@ public class StudentService : IStudentService
             .OrderByDescending(e => e.EnrollmentDate)
             .Select(e =>
             {
-                var group = e.Course.MebGroup;
+                var group = e.MebGroup;
                 var summary = new MebGroupSummaryDto
                 {
                     Year = group.Year,
@@ -277,17 +274,17 @@ public class StudentService : IStudentService
                     EndDate = group.EndDate
                 };
 
-                var courseName = BuildCourseName(e.Course.SrcType, group.Month, group.Year, group.GroupNo, group.Branch);
-                examAttemptsByCourse.TryGetValue(e.CourseId, out var attemptCount);
+                var courseName = BuildCourseName(group.SrcType, group.Month, group.Year, group.GroupNo, group.Branch);
+                examAttemptsByGroup.TryGetValue(e.MebGroupId, out var attemptCount);
 
                 return new StudentEnrollmentSummaryDto
                 {
                     EnrollmentId = e.Id,
-                    CourseId = e.CourseId,
+                    MebGroupId = e.MebGroupId,
                     CourseName = courseName,
                     Status = e.Status,
                     EnrollmentDate = e.EnrollmentDate,
-                    SrcType = e.Course.SrcType,
+                    SrcType = group.SrcType,
                     Group = summary,
                     IsActive = e.Status == "active" && group.StartDate <= now && group.EndDate >= now,
                     ExamAttemptCount = attemptCount
@@ -302,11 +299,11 @@ public class StudentService : IStudentService
                 EnrollmentCourseSummaryDto? enrollmentSummary = null;
                 if (p.Enrollment != null)
                 {
-                    var group = p.Enrollment.Course.MebGroup;
+                    var group = p.Enrollment.MebGroup;
                     enrollmentSummary = new EnrollmentCourseSummaryDto
                     {
-                        CourseId = p.Enrollment.CourseId,
-                        CourseName = BuildCourseName(p.Enrollment.Course.SrcType, group.Month, group.Year, group.GroupNo, group.Branch),
+                        MebGroupId = p.Enrollment.MebGroupId,
+                        CourseName = BuildCourseName(group.SrcType, group.Month, group.Year, group.GroupNo, group.Branch),
                         Group = new MebGroupSummaryDto
                         {
                             Year = group.Year,
@@ -316,7 +313,7 @@ public class StudentService : IStudentService
                             StartDate = group.StartDate,
                             EndDate = group.EndDate
                         },
-                        SrcType = p.Enrollment.Course.SrcType
+                        SrcType = group.SrcType
                     };
                 }
 
@@ -404,7 +401,86 @@ public class StudentService : IStudentService
                 throw new ArgumentException("Soyad gereklidir.");
             }
 
+            // String length validasyonu - DoS koruması
+            const int maxNameLength = 200; // Makul bir maksimum uzunluk
+            if (request.FirstName != null && request.FirstName.Length > maxNameLength)
+            {
+                Log.Warning("First name too long: {Length}", request.FirstName.Length);
+                throw new ArgumentException($"Ad en fazla {maxNameLength} karakter olabilir.");
+            }
+
+            if (request.LastName.Length > maxNameLength)
+            {
+                Log.Warning("Last name too long: {Length}", request.LastName.Length);
+                throw new ArgumentException($"Soyad en fazla {maxNameLength} karakter olabilir.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Phone) && request.Phone.Length > 50)
+            {
+                Log.Warning("Phone too long: {Length}", request.Phone.Length);
+                throw new ArgumentException("Telefon numarası en fazla 50 karakter olabilir.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Email))
+            {
+                if (request.Email.Length > 255)
+                {
+                    Log.Warning("Email too long: {Length}", request.Email.Length);
+                    throw new ArgumentException("E-posta adresi en fazla 255 karakter olabilir.");
+                }
+                
+                // Email format validasyonu
+                try
+                {
+                    var emailRegex = new System.Text.RegularExpressions.Regex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (!emailRegex.IsMatch(request.Email))
+                    {
+                        Log.Warning("Invalid email format: {Email}", request.Email);
+                        throw new ArgumentException("Geçersiz e-posta adresi formatı.");
+                    }
+                }
+                catch (ArgumentException)
+                {
+                    throw; // Re-throw validation errors
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Address) && request.Address.Length > 500)
+            {
+                Log.Warning("Address too long: {Length}", request.Address.Length);
+                throw new ArgumentException("Adres en fazla 500 karakter olabilir.");
+            }
+
             var tcKimlikNo = request.TcKimlikNo!.Trim();
+
+            // TC Kimlik No format validasyonu (11 haneli olmalı, sadece rakam)
+            if (tcKimlikNo.Length != 11 || !tcKimlikNo.All(char.IsDigit))
+            {
+                Log.Warning("Invalid TC Kimlik No format: {TcKimlikNo}", tcKimlikNo);
+                throw new ArgumentException("TC Kimlik No 11 haneli olmalı ve sadece rakam içermelidir.");
+            }
+
+            // BirthDate validasyonu - gelecek tarih olamaz
+            if (request.BirthDate.HasValue)
+            {
+                var birthDate = request.BirthDate.Value;
+                var today = DateTime.UtcNow.Date;
+                
+                // Gelecek tarih kontrolü
+                if (birthDate.Date > today)
+                {
+                    Log.Warning("Future birth date provided: {BirthDate}", birthDate);
+                    throw new ArgumentException("Doğum tarihi gelecek bir tarih olamaz.");
+                }
+                
+                // Çok eski tarih kontrolü (örneğin 150 yıldan eski)
+                var minDate = today.AddYears(-150);
+                if (birthDate.Date < minDate)
+                {
+                    Log.Warning("Birth date too old: {BirthDate}", birthDate);
+                    throw new ArgumentException("Doğum tarihi çok eski bir tarih olamaz.");
+                }
+            }
 
             // TC Kimlik No unique kontrolü
             Log.Debug("Checking for existing student with TC: {TcKimlikNo}", request.TcKimlikNo);
@@ -429,6 +505,9 @@ public class StudentService : IStudentService
                 EducationLevel = string.IsNullOrWhiteSpace(request.EducationLevel) ? null : request.EducationLevel?.Trim(),
                 LicenseType = string.IsNullOrWhiteSpace(request.LicenseType) ? null : request.LicenseType?.Trim(),
                 LicenseIssueDate = request.LicenseIssueDate,
+                SelectedSrcCourses = request.SelectedSrcCourses != null && request.SelectedSrcCourses.Count > 0
+                    ? string.Join(",", request.SelectedSrcCourses.OrderBy(x => x))
+                    : null,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -440,6 +519,13 @@ public class StudentService : IStudentService
                 Log.Debug("Saving changes to database");
                 await _context.SaveChangesAsync();
                 await CreateDefaultPaymentIfNeededAsync(student);
+                
+                // SRC kursları için hatırlatmalar oluştur
+                if (request.SelectedSrcCourses != null && request.SelectedSrcCourses.Count > 0)
+                {
+                    await CreateCourseRemindersAsync(student, request.SelectedSrcCourses);
+                }
+                
                 Log.Information("Student created successfully with ID: {StudentId}", student.Id);
             }
             catch (Microsoft.EntityFrameworkCore.DbUpdateException ex)
@@ -513,7 +599,30 @@ public class StudentService : IStudentService
 
         if (!string.IsNullOrEmpty(request.FirstName)) student.FirstName = request.FirstName;
         if (!string.IsNullOrEmpty(request.LastName)) student.LastName = request.LastName;
-        if (request.BirthDate.HasValue) student.BirthDate = request.BirthDate;
+        
+        // BirthDate validasyonu - gelecek tarih olamaz
+        if (request.BirthDate.HasValue)
+        {
+            var birthDate = request.BirthDate.Value;
+            var today = DateTime.UtcNow.Date;
+            
+            // Gelecek tarih kontrolü
+            if (birthDate.Date > today)
+            {
+                Log.Warning("Future birth date provided in update: {BirthDate}", birthDate);
+                throw new ArgumentException("Doğum tarihi gelecek bir tarih olamaz.");
+            }
+            
+            // Çok eski tarih kontrolü (örneğin 150 yıldan eski)
+            var minDate = today.AddYears(-150);
+            if (birthDate.Date < minDate)
+            {
+                Log.Warning("Birth date too old in update: {BirthDate}", birthDate);
+                throw new ArgumentException("Doğum tarihi çok eski bir tarih olamaz.");
+            }
+            
+            student.BirthDate = request.BirthDate;
+        }
         if (request.Phone != null) student.Phone = request.Phone;
         if (request.Email != null) student.Email = request.Email;
         if (request.Address != null) student.Address = request.Address;
@@ -532,8 +641,113 @@ public class StudentService : IStudentService
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var student = await _context.Students.FindAsync(id);
+        var student = await _context.Students
+            .FirstOrDefaultAsync(s => s.Id == id);
+            
         if (student == null) return false;
+
+        // İlişkili kayıtları kontrol et ve sil
+        // Önce tüm ilişkili kayıtları yükle
+        var enrollments = await _context.Enrollments
+            .Where(e => e.StudentId == id)
+            .ToListAsync();
+            
+        var enrollmentIds = enrollments.Select(e => e.Id).ToList();
+        
+        var transferItems = await _context.MebbisTransferItems
+            .Where(mti => enrollmentIds.Contains(mti.EnrollmentId))
+            .ToListAsync();
+            
+        var enrollmentPayments = await _context.Payments
+            .Where(p => p.EnrollmentId.HasValue && enrollmentIds.Contains(p.EnrollmentId.Value))
+            .ToListAsync();
+            
+        var attendances = await _context.Attendances
+            .Where(a => a.StudentId == id)
+            .ToListAsync();
+            
+        var examResults = await _context.ExamResults
+            .Where(er => er.StudentId == id)
+            .ToListAsync();
+            
+        // Payments - StudentId'ye bağlı olanları al
+        var allPayments = await _context.Payments
+            .Where(p => p.StudentId == id)
+            .ToListAsync();
+        
+        // Enrollment payment'larını student payment'lardan ayır
+        var enrollmentPaymentIds = enrollmentPayments.Select(ep => ep.Id).ToList();
+        var studentOnlyPayments = allPayments
+            .Where(p => !enrollmentPaymentIds.Contains(p.Id))
+            .ToList();
+            
+        var certificates = await _context.Certificates
+            .Where(c => c.StudentId == id)
+            .ToListAsync();
+            
+        var documents = await _context.StudentDocuments
+            .Where(d => d.StudentId == id)
+            .ToListAsync();
+            
+        var reminders = await _context.Reminders
+            .Where(r => r.StudentId == id)
+            .ToListAsync();
+
+        // İlişkili kayıtları sil (sıralama önemli - foreign key constraint'lere göre)
+        if (transferItems.Any())
+        {
+            _context.MebbisTransferItems.RemoveRange(transferItems);
+        }
+        
+        // Enrollment payment'larını enrollment'dan ayır (null yap)
+        foreach (var payment in enrollmentPayments)
+        {
+            payment.EnrollmentId = null;
+        }
+        
+        if (enrollments.Any())
+        {
+            _context.Enrollments.RemoveRange(enrollments);
+        }
+
+        if (attendances.Any())
+        {
+            _context.Attendances.RemoveRange(attendances);
+        }
+
+        if (examResults.Any())
+        {
+            _context.ExamResults.RemoveRange(examResults);
+        }
+
+        // Student payment'ları sil (enrollment payment'ları hariç)
+        if (studentOnlyPayments.Any())
+        {
+            _context.Payments.RemoveRange(studentOnlyPayments);
+        }
+        
+        // Enrollment payment'ları enrollment silindikten sonra sil
+        // Önce enrollment'ları sil, sonra payment'ları
+        if (enrollmentPayments.Any())
+        {
+            // Enrollment'lar silindikten sonra payment'ları da sil
+            _context.Payments.RemoveRange(enrollmentPayments);
+        }
+
+        if (certificates.Any())
+        {
+            _context.Certificates.RemoveRange(certificates);
+        }
+
+        if (documents.Any())
+        {
+            _context.StudentDocuments.RemoveRange(documents);
+        }
+
+        if (reminders.Any())
+        {
+            _context.Reminders.RemoveRange(reminders);
+        }
 
         _context.Students.Remove(student);
         await _context.SaveChangesAsync();
@@ -811,6 +1025,46 @@ public class StudentService : IStudentService
             {
                 previousSource.Dispose();
             }
+        }
+    }
+
+    private async Task CreateCourseRemindersAsync(
+        Student student,
+        List<int> selectedSrcCourses)
+    {
+        if (selectedSrcCourses.Count == 0)
+        {
+            return;
+        }
+
+        var sortedCourses = selectedSrcCourses.OrderBy(c => c).ToList();
+        var reminders = new List<Reminder>();
+
+        // İlk kurs dışındaki kurslar için "önceki kurs tamamlandığında" hatırlatması oluştur
+        for (int i = 1; i < sortedCourses.Count; i++)
+        {
+            var currentSrcType = sortedCourses[i];
+            var previousSrcType = sortedCourses[i - 1];
+            
+            var reminder = new Reminder
+            {
+                StudentId = student.Id,
+                Type = "next_course_preparation",
+                Channel = "both",
+                Title = $"SRC{currentSrcType} kursu için hazırlık",
+                Message = $"{student.FirstName} {student.LastName}, SRC{previousSrcType} kursunu tamamladıktan sonra SRC{currentSrcType} kursu için hazırlık yapmanız gerekmektedir.",
+                Status = "pending",
+                ScheduledAt = DateTime.UtcNow.AddMonths(3), // Varsayılan olarak 3 ay sonra (sertifika alındığında güncellenecek)
+                CreatedAt = DateTime.UtcNow
+            };
+            reminders.Add(reminder);
+        }
+
+        if (reminders.Count > 0)
+        {
+            await _context.Reminders.AddRangeAsync(reminders);
+            await _context.SaveChangesAsync();
+            Log.Information("Created {Count} course reminders for student {StudentId}", reminders.Count, student.Id);
         }
     }
 

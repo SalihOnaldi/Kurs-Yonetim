@@ -180,16 +180,20 @@ builder.Services.AddScoped<ITenantProvider, TenantProvider>();
 builder.Services.AddScoped<IAuditLogger, AuditLogger>();
 builder.Services.AddScoped<ILicenseEventPublisher, LicenseEventPublisher>();
 builder.Services.AddScoped<ILicensePermissionService, LicensePermissionService>();
+builder.Services.AddScoped<SRC.Application.Interfaces.ICertificateService, CertificateService>();
+builder.Services.AddScoped<SRC.Application.Interfaces.ISrcCourseTemplateService, SrcCourseTemplateService>();
 
 builder.Services.Configure<PaymentDefaultsOptions>(builder.Configuration.GetSection("PaymentDefaults"));
 builder.Services.Configure<LicenseReminderOptions>(builder.Configuration.GetSection("LicenseReminder"));
 builder.Services.Configure<LicenseWebhookOptions>(builder.Configuration.GetSection("LicenseWebhook"));
 builder.Services.Configure<LicenseSummaryEmailOptions>(builder.Configuration.GetSection("LicenseSummaryEmail"));
 builder.Services.Configure<LicensePermissionOptions>(builder.Configuration.GetSection("LicensePermissions"));
+builder.Services.Configure<SRC.Application.Options.DocumentReminderOptions>(builder.Configuration.GetSection("DocumentReminder"));
 
 // Background Jobs
 builder.Services.AddScoped<OcrBackgroundJob>();
 builder.Services.AddScoped<DocumentExpiryScanJob>();
+builder.Services.AddScoped<MissingDocumentReminderJob>();
 builder.Services.AddScoped<ReminderDispatchJob>();
 builder.Services.AddScoped<LicenseExpiryReminderJob>();
 builder.Services.AddScoped<LicenseSummaryEmailJob>();
@@ -201,11 +205,14 @@ if (!isTestingEnvironment)
 }
 
 // CORS
+var allowedOrigins = builder.Configuration.GetSection("CORS:AllowedOrigins").Get<string[]>() 
+    ?? new[] { "http://localhost:3000" };
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("http://localhost:3000")
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -225,6 +232,18 @@ app.UseHttpsRedirection();
 app.UseResponseCompression();
 app.UseResponseCaching();
 app.UseCors("AllowFrontend");
+app.UseMiddleware<SRC.Presentation.Api.Middleware.RateLimitMiddleware>();
+// OPTIONS request'leri için CORS preflight'ı handle et
+app.Use(async (context, next) =>
+{
+    if (context.Request.Method == "OPTIONS")
+    {
+        context.Response.StatusCode = 200;
+        await context.Response.CompleteAsync();
+        return;
+    }
+    await next();
+});
 app.UseAuthentication();
 app.UseMiddleware<TenantMiddleware>();
 app.UseAuthorization();
@@ -305,10 +324,12 @@ if (!app.Environment.IsEnvironment("Testing"))
                 }
             }
             
-            if (migrationSuccess)
-            {
-                SeedData.Initialize(dbContext);
-            }
+            // Seed data otomatik çalışması devre dışı bırakıldı
+            // Seed data'yı manuel olarak eklemek için: POST /api/hq/data/seed endpoint'ini kullanın
+            // if (migrationSuccess)
+            // {
+            //     SeedData.Initialize(dbContext);
+            // }
         }
     }
     catch (Exception ex)
@@ -386,6 +407,12 @@ public sealed class HangfireWorkerBootstrap : IHostedService
             "license-expiry-reminders",
             job => job.ExecuteAsync(CancellationToken.None),
             Cron.Daily(3),
+            maintenanceOptions);
+
+        _recurringJobManager.AddOrUpdate<MissingDocumentReminderJob>(
+            "missing-document-reminders",
+            job => job.ExecuteAsync(CancellationToken.None),
+            Cron.Daily(8), // Her gün saat 08:00'de çalışsın
             maintenanceOptions);
 
         if (_summaryOptions.Enabled)
